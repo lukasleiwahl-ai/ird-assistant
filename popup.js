@@ -60,23 +60,34 @@ window.VercelBackend = {
         const s = await getSettings();
         
         if (message.type === 'TEST_NOTIFICATION') {
-            let soundOk = false;
+            let soundOk = !message.withSound;
+            let bannerOk = false;
+            let soundError = "";
+            let bannerError = "";
             if (message.withSound) {
-                try { 
+                try {
                     const audio = new Audio('order_overdue_alarm.wav');
+                    audio.preload = "auto";
                     await audio.play();
-                    soundOk = true; 
-                } catch(e){ console.warn("Audio blocked by browser:", e); }
+                    soundOk = true;
+                } catch(e) {
+                    soundError = "Audio playback was blocked or unavailable. Click the test button again and check browser sound permissions.";
+                }
             }
-            
-            if (Notification.permission !== 'granted' && Notification.permission !== 'denied') {
-                try { await Notification.requestPermission(); } catch(e){}
+            if (typeof Notification === "undefined") {
+                bannerError = "This browser does not support desktop notifications.";
+            } else {
+                try {
+                    let permission = Notification.permission;
+                    if (permission === "default") permission = await Notification.requestPermission();
+                    if (permission === "granted") {
+                        new Notification("IRD Assistant", {body: "Test Banner Berhasil!", icon: "icon48.png"});
+                        bannerOk = true;
+                    } else bannerError = "Notification permission is " + permission + ". Allow notifications for this site in browser settings.";
+                } catch(e) { bannerError = "Could not display notification: " + String(e && e.message || e); }
             }
-            if (Notification.permission === 'granted') {
-                try { new Notification("IRD Assistant", {body: "Test Banner Berhasil!", icon: "icon48.png"}); } catch(e){}
-            }
-            
-            const res = {ok: true, sound: soundOk, message: "Tested"};
+            const ok = bannerOk && soundOk;
+            const res = {ok:ok, sound:soundOk, banner:bannerOk, error:[bannerError,soundError].filter(Boolean).join(" "), message:ok?"Banner and alarm test completed.":"One or more notification tests failed."};
             if(callback) callback(res);
             return res;
         }
@@ -104,7 +115,7 @@ window.VercelBackend = {
         if (!s.endpointUrl) return {ok: false, error: "Web App URL belum diisi di Settings."};
         if (!s.spreadsheetId) return {ok: false, error: "Spreadsheet ID belum diisi di Settings."};
         
-        let payload = { spreadsheetId: s.spreadsheetId };
+        let payload = { spreadsheetId: s.spreadsheetId, sheetName: s.sheetName || "LIVE REQUESTS", historySheetName: s.historySheetName || "HISTORY" };
         switch (message.type) {
             case 'TEST_CONNECTION': payload.action = 'testConnection'; break;
             case 'SAVE_REQUEST': payload.action = 'createRequest'; payload.request = message.request; payload.staffName = s.staffName; payload.computerName = s.computerName; break;
@@ -118,16 +129,31 @@ window.VercelBackend = {
         }
         
         try {
-            const response = await fetch(s.endpointUrl, {
-                method: "POST",
-                body: JSON.stringify(payload),
-                headers: { "Content-Type": "text/plain" }
-            });
-            const data = await response.json();
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 15000);
+            let response;
+            let raw;
+            try {
+                response = await fetch(s.endpointUrl, {
+                    method: "POST",
+                    body: JSON.stringify(payload),
+                    headers: { "Content-Type": "text/plain;charset=utf-8" },
+                    signal: controller.signal,
+                    cache: "no-store"
+                });
+                raw = await response.text();
+            } finally {
+                clearTimeout(timeoutId);
+            }
+            let data;
+            try { data = JSON.parse(raw); }
+            catch (_) { throw new Error("Backend returned an invalid response. Check the Apps Script deployment and execution log."); }
+            if (!response.ok) throw new Error("HTTP " + response.status + ": " + (data.error || response.statusText || "Request failed"));
             if (callback) callback(data);
             return data;
         } catch (e) {
-            const err = {ok: false, error: "Network Error: Pastikan URL Web App benar dan di-deploy Anyone/Me. (" + e.message + ")"};
+            const detail = e && e.name === "AbortError" ? "Request timed out after 15 seconds." : String(e && e.message || e);
+            const err = {ok: false, error: "Backend connection failed: " + detail};
             if (callback) callback(err);
             return err;
         }
@@ -146,6 +172,6 @@ $("live").onclick=async()=>{
   $("list").textContent="Loading…";
   const r=await VercelBackend.sendMessage({type:"LIST_LIVE"});
   if(!r?.ok){$("list").innerHTML=`<div class="err">${r?.error||"Failed"}</div>`;return;}
-  const rows=r.data.rows||[];
+  const rows=r.rows||[];
   $("list").innerHTML=rows.slice(0,12).map(x=>`<div class="task"><b>Room ${x.room}</b><br>${x.request}<br><span class="small">${x.status||"Pending"} • due ${x.dueAt||"-"}</span></div>`).join("")||"<div class='small'>No live requests.</div>";
 };

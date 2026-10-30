@@ -60,23 +60,34 @@ window.VercelBackend = {
         const s = await getSettings();
         
         if (message.type === 'TEST_NOTIFICATION') {
-            let soundOk = false;
+            let soundOk = !message.withSound;
+            let bannerOk = false;
+            let soundError = "";
+            let bannerError = "";
             if (message.withSound) {
-                try { 
+                try {
                     const audio = new Audio('order_overdue_alarm.wav');
+                    audio.preload = "auto";
                     await audio.play();
-                    soundOk = true; 
-                } catch(e){ console.warn("Audio blocked by browser:", e); }
+                    soundOk = true;
+                } catch(e) {
+                    soundError = "Audio playback was blocked or unavailable. Click the test button again and check browser sound permissions.";
+                }
             }
-            
-            if (Notification.permission !== 'granted' && Notification.permission !== 'denied') {
-                try { await Notification.requestPermission(); } catch(e){}
+            if (typeof Notification === "undefined") {
+                bannerError = "This browser does not support desktop notifications.";
+            } else {
+                try {
+                    let permission = Notification.permission;
+                    if (permission === "default") permission = await Notification.requestPermission();
+                    if (permission === "granted") {
+                        new Notification("IRD Assistant", {body: "Test Banner Berhasil!", icon: "icon48.png"});
+                        bannerOk = true;
+                    } else bannerError = "Notification permission is " + permission + ". Allow notifications for this site in browser settings.";
+                } catch(e) { bannerError = "Could not display notification: " + String(e && e.message || e); }
             }
-            if (Notification.permission === 'granted') {
-                try { new Notification("IRD Assistant", {body: "Test Banner Berhasil!", icon: "icon48.png"}); } catch(e){}
-            }
-            
-            const res = {ok: true, sound: soundOk, message: "Tested"};
+            const ok = bannerOk && soundOk;
+            const res = {ok:ok, sound:soundOk, banner:bannerOk, error:[bannerError,soundError].filter(Boolean).join(" "), message:ok?"Banner and alarm test completed.":"One or more notification tests failed."};
             if(callback) callback(res);
             return res;
         }
@@ -104,7 +115,7 @@ window.VercelBackend = {
         if (!s.endpointUrl) return {ok: false, error: "Web App URL belum diisi di Settings."};
         if (!s.spreadsheetId) return {ok: false, error: "Spreadsheet ID belum diisi di Settings."};
         
-        let payload = { spreadsheetId: s.spreadsheetId };
+        let payload = { spreadsheetId: s.spreadsheetId, sheetName: s.sheetName || "LIVE REQUESTS", historySheetName: s.historySheetName || "HISTORY" };
         switch (message.type) {
             case 'TEST_CONNECTION': payload.action = 'testConnection'; break;
             case 'SAVE_REQUEST': payload.action = 'createRequest'; payload.request = message.request; payload.staffName = s.staffName; payload.computerName = s.computerName; break;
@@ -118,16 +129,31 @@ window.VercelBackend = {
         }
         
         try {
-            const response = await fetch(s.endpointUrl, {
-                method: "POST",
-                body: JSON.stringify(payload),
-                headers: { "Content-Type": "text/plain" }
-            });
-            const data = await response.json();
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 15000);
+            let response;
+            let raw;
+            try {
+                response = await fetch(s.endpointUrl, {
+                    method: "POST",
+                    body: JSON.stringify(payload),
+                    headers: { "Content-Type": "text/plain;charset=utf-8" },
+                    signal: controller.signal,
+                    cache: "no-store"
+                });
+                raw = await response.text();
+            } finally {
+                clearTimeout(timeoutId);
+            }
+            let data;
+            try { data = JSON.parse(raw); }
+            catch (_) { throw new Error("Backend returned an invalid response. Check the Apps Script deployment and execution log."); }
+            if (!response.ok) throw new Error("HTTP " + response.status + ": " + (data.error || response.statusText || "Request failed"));
             if (callback) callback(data);
             return data;
         } catch (e) {
-            const err = {ok: false, error: "Network Error: Pastikan URL Web App benar dan di-deploy Anyone/Me. (" + e.message + ")"};
+            const detail = e && e.name === "AbortError" ? "Request timed out after 15 seconds." : String(e && e.message || e);
+            const err = {ok: false, error: "Backend connection failed: " + detail};
             if (callback) callback(err);
             return err;
         }
@@ -136,15 +162,15 @@ window.VercelBackend = {
 // --- END VERCEL NATIVE BACKEND ---
 
 const ids=["endpointUrl","spreadsheetId","sheetName","historySheetName","staffName","staffList","computerName","defaultTiming","reminderMinutes","syncIntervalSeconds"];
-const defaults={endpointUrl:"",spreadsheetId:"",sheetName:"LIVE REQUESTS",historySheetName:"HISTORY",staffName:"",staffList:"",computerName:"",defaultTiming:20,reminderMinutes:5,syncIntervalSeconds:30};
+const defaults={endpointUrl:"",spreadsheetId:"",sheetName:"LIVE REQUESTS",historySheetName:"HISTORY",staffName:"",staffList:"",computerName:"",defaultTiming:20,reminderMinutes:5,syncIntervalSeconds:10};
 VercelStorage.sync.get(defaults,s=>ids.forEach(id=>document.getElementById(id).value=s[id]??""));
 document.getElementById("save").onclick=async()=>{const o={};ids.forEach(id=>o[id]=document.getElementById(id).value);o.defaultTiming=Math.min(60,Math.max(5,Number(o.defaultTiming)||20));o.reminderMinutes=Math.max(0,Number(o.reminderMinutes)||0);await VercelStorage.sync.set(o);msg("✓ Settings saved.");};
-document.getElementById("test").onclick=async()=>{msg("Testing…");const r=await VercelBackend.sendMessage({type:"TEST_CONNECTION"});msg(r?.ok?`✓ Connected. ${r.data.message||""}`:`✗ ${r?.error||"Connection failed."}`,!r?.ok);};
+document.getElementById("test").onclick=async()=>{msg("Testing…");const r=await VercelBackend.sendMessage({type:"TEST_CONNECTION"});msg(r?.ok?`✓ Connected. ${r.message||""}`:`✗ ${r?.error||"Connection failed."}`,!r?.ok);};
 function msg(t,e=false){const m=document.getElementById("msg");m.textContent=t;m.style.color=e?"#b42318":"#0b8f5a"}
 
 
-document.getElementById("testNotification").onclick=async()=>{const el=document.getElementById("notifyMsg");el.textContent="Sending banner + testing alarm playback…";try{const r=await VercelBackend.sendMessage({type:"TEST_NOTIFICATION",withSound:true});el.textContent=r?.ok&&r?.sound?"✓ Banner sent and audio playback confirmed by the browser. If you cannot hear it, check Windows volume/output device and mute settings.":`✗ ${r?.error||"Alarm playback was not confirmed."}`;el.style.color=r?.ok?"#0b8f5a":"#b42318";}catch(e){el.textContent=`✗ ${e?.message||e}`;el.style.color="#b42318";}};
-document.getElementById("testBanner").onclick=async()=>{const el=document.getElementById("notifyMsg");el.textContent="Sending banner…";const r=await VercelBackend.sendMessage({type:"TEST_NOTIFICATION",withSound:false});el.textContent=r?.ok?"✓ Test banner sent. Sound was intentionally disabled for this test.":`✗ ${r?.error||"Notification test failed."}`;};
+document.getElementById("testNotification").onclick=async()=>{const el=document.getElementById("notifyMsg");el.textContent="Sending banner + testing alarm playback…";try{const r=await VercelBackend.sendMessage({type:"TEST_NOTIFICATION",withSound:true});el.textContent=r?.ok?"✓ Banner displayed and alarm playback confirmed.":`✗ ${r?.error||"Banner or alarm test failed."}`;el.style.color=r?.ok?"#0b8f5a":"#b42318";}catch(e){el.textContent=`✗ ${e?.message||e}`;el.style.color="#b42318";}};
+document.getElementById("testBanner").onclick=async()=>{const el=document.getElementById("notifyMsg");el.textContent="Sending banner…";const r=await VercelBackend.sendMessage({type:"TEST_NOTIFICATION",withSound:false});el.textContent=r?.banner?"✓ Test banner displayed. Sound was intentionally disabled for this test.":`✗ ${r?.error||"Notification test failed."}`;};
 
 
 
