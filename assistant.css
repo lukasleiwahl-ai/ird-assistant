@@ -42,3 +42,17 @@
 .task-actions .ack{background:#0788c6;color:#fff;border:1px solid #0788c6}.task-actions .handover{background:#fff;color:#80652d;border:1px solid #d8d1c2}.task-actions .done{background:#8a6826;color:#fff;border:1px solid #8a6826}.task-actions .remark[hidden]{display:none!important}
 .task-actions button:disabled{opacity:.5;cursor:not-allowed}
 @media(max-width:420px){.task-card{padding:12px}.room{font-size:13px;padding:9px 11px}.priority{font-size:10px;padding:8px}.done-buttons{gap:6px}.done-buttons button{font-size:11px!important;min-height:44px}}
+
+/* v2.7.9.4 additive mobile camera and PWA notification refinements */
+.image-action-buttons{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.file-input-hidden{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important;opacity:0!important;pointer-events:none!important}
+.camera-btn{background:#edf6ff!important;color:#145b8f!important;border:1px solid #c8dff2!important}
+.alert{cursor:pointer;position:relative;z-index:2;line-height:1.35}
+.alert .alert-title{display:block}
+.image-upload-head,.remark-evidence-head{flex-wrap:wrap}
+@media(max-width:520px){
+  .image-action-buttons{width:100%;display:grid;grid-template-columns:1fr 1fr}
+  .image-action-buttons button{min-height:42px;font-size:11px}
+  .image-dropzone{min-height:100px;padding:12px}
+  .image-preview-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}

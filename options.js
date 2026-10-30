@@ -57,8 +57,9 @@ window.VercelBackend = {
     },
     sendMessage: async function(message, callback) {
         const getSettings = () => new Promise(res => window.VercelStorage.sync.get(['endpointUrl', 'spreadsheetId', 'sheetName', 'historySheetName', 'staffName', 'computerName', 'reminderMinutes'], res));
-        const s = await getSettings();
-        
+
+        // Run user-gesture-sensitive local tests before awaiting settings storage.
+        // This lets the audio test retain the browser's transient user activation.
         if (message.type === 'TEST_NOTIFICATION') {
             let soundOk = !message.withSound;
             let bannerOk = false;
@@ -75,13 +76,19 @@ window.VercelBackend = {
                 }
             }
             if (typeof Notification === "undefined") {
-                bannerError = "This browser does not support desktop notifications.";
+                bannerError = "This browser does not support notifications.";
             } else {
                 try {
                     let permission = Notification.permission;
                     if (permission === "default") permission = await Notification.requestPermission();
                     if (permission === "granted") {
-                        new Notification("IRD Assistant", {body: "Test Banner Berhasil!", icon: "icon48.png"});
+                        if ("serviceWorker" in navigator) {
+                            await navigator.serviceWorker.register("./service-worker.js");
+                            const registration = await navigator.serviceWorker.ready;
+                            await registration.showNotification("IRD Assistant", {body:"Test Banner Berhasil!", icon:"./icon128.png", badge:"./icon48.png", tag:"ird-test-banner", data:{url:"./index.html?tab=tasks"}});
+                        } else {
+                            new Notification("IRD Assistant", {body:"Test Banner Berhasil!", icon:"./icon48.png"});
+                        }
                         bannerOk = true;
                     } else bannerError = "Notification permission is " + permission + ". Allow notifications for this site in browser settings.";
                 } catch(e) { bannerError = "Could not display notification: " + String(e && e.message || e); }
@@ -112,6 +119,7 @@ window.VercelBackend = {
             return {ok: true};
         }
 
+        const s = await getSettings();
         if (!s.endpointUrl) return {ok: false, error: "Web App URL belum diisi di Settings."};
         if (!s.spreadsheetId) return {ok: false, error: "Spreadsheet ID belum diisi di Settings."};
         
@@ -169,10 +177,103 @@ document.getElementById("test").onclick=async()=>{msg("Testing…");const r=awai
 function msg(t,e=false){const m=document.getElementById("msg");m.textContent=t;m.style.color=e?"#b42318":"#0b8f5a"}
 
 
-document.getElementById("testNotification").onclick=async()=>{const el=document.getElementById("notifyMsg");el.textContent="Sending banner + testing alarm playback…";try{const r=await VercelBackend.sendMessage({type:"TEST_NOTIFICATION",withSound:true});el.textContent=r?.ok?"✓ Banner displayed and alarm playback confirmed.":`✗ ${r?.error||"Banner or alarm test failed."}`;el.style.color=r?.ok?"#0b8f5a":"#b42318";}catch(e){el.textContent=`✗ ${e?.message||e}`;el.style.color="#b42318";}};
-document.getElementById("testBanner").onclick=async()=>{const el=document.getElementById("notifyMsg");el.textContent="Sending banner…";const r=await VercelBackend.sendMessage({type:"TEST_NOTIFICATION",withSound:false});el.textContent=r?.banner?"✓ Test banner displayed. Sound was intentionally disabled for this test.":`✗ ${r?.error||"Notification test failed."}`;};
+document.getElementById("testNotification").onclick=async()=>{const el=document.getElementById("notifyMsg");el.textContent="Sending device notification + testing alarm playback…";try{if(typeof Notification!=="undefined"&&Notification.permission==="default")await Notification.requestPermission();const r=await VercelBackend.sendMessage({type:"TEST_NOTIFICATION",withSound:true});el.textContent=r?.ok?"✓ Device notification displayed and alarm playback confirmed.":`✗ ${r?.error||"Device notification or alarm test failed."}`;el.style.color=r?.ok?"#0b8f5a":"#b42318";}catch(e){el.textContent=`✗ ${e?.message||e}`;el.style.color="#b42318";}};
+document.getElementById("testBanner").onclick=async()=>{const el=document.getElementById("notifyMsg");el.textContent="Sending device notification…";try{if(typeof Notification!=="undefined"&&Notification.permission==="default")await Notification.requestPermission();const r=await VercelBackend.sendMessage({type:"TEST_NOTIFICATION",withSound:false});el.textContent=r?.banner?"✓ Test device notification displayed. Sound was intentionally disabled.":`✗ ${r?.error||"Notification test failed."}`;el.style.color=r?.banner?"#0b8f5a":"#b42318";}catch(e){el.textContent=`✗ ${e?.message||e}`;el.style.color="#b42318";}};
 
 
+
+
+function pushMessage(text, isError=false) {
+    const el = document.getElementById("pushMsg");
+    if (!el) return;
+    el.textContent = text;
+    el.style.color = isError ? "#b42318" : "#0b8f5a";
+}
+
+function base64UrlToUint8Array(base64Url) {
+    const padding = "=".repeat((4 - (base64Url.length % 4)) % 4);
+    const base64 = (base64Url + padding).replace(/-/g, "+").replace(/_/g, "/");
+    const raw = atob(base64);
+    const output = new Uint8Array(raw.length);
+    for (let i = 0; i < raw.length; i++) output[i] = raw.charCodeAt(i);
+    return output;
+}
+
+function isIosDevice() {
+    return /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+}
+
+async function enablePushOnThisDevice() {
+    const button = document.getElementById("enablePush");
+    button.disabled = true;
+    pushMessage("Preparing notification permission and device registration…");
+    try {
+        const endpointUrl = String(document.getElementById("endpointUrl").value || "").trim();
+        const spreadsheetIdRaw = String(document.getElementById("spreadsheetId").value || "").trim();
+        const spreadsheetMatch = spreadsheetIdRaw.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+        const spreadsheetId = spreadsheetMatch ? spreadsheetMatch[1] : spreadsheetIdRaw.replace(/[?#].*$/i, "").replace(/\/edit.*$/i, "").trim();
+        if (!endpointUrl || !spreadsheetId) throw new Error("Save the Apps Script URL and Spreadsheet ID first.");
+        if (!window.isSecureContext) throw new Error("Notifications require HTTPS. Open the deployed Vercel HTTPS address.");
+        if (!("serviceWorker" in navigator) || !("PushManager" in window) || typeof Notification === "undefined") {
+            throw new Error("This browser does not support Web Push. Use an up-to-date Chrome, Edge, or Safari PWA.");
+        }
+        const standalone = window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+        if (isIosDevice() && !standalone) {
+            throw new Error("On iPhone/iPad, add IRD Assistant to the Home Screen first, open it from its icon, then enable notifications here.");
+        }
+        let permission = Notification.permission;
+        if (permission === "default") permission = await Notification.requestPermission();
+        if (permission !== "granted") throw new Error("Notification permission is " + permission + ". Enable notifications for this site in browser settings.");
+
+        const registration = await navigator.serviceWorker.register("./service-worker.js", { scope: "./" });
+        await navigator.serviceWorker.ready;
+        const pushApiUrl = new URL("./api/push", window.location.href).toString();
+        const configResponse = await fetch(pushApiUrl, { method: "GET", cache: "no-store" });
+        const config = await configResponse.json();
+        if (!configResponse.ok || !config.ok || !config.publicKey) throw new Error(config.error || "Vercel Push endpoint is not configured. Deploy the /api/push function and VAPID public key first.");
+
+        let subscription = await registration.pushManager.getSubscription();
+        if (!subscription) {
+            subscription = await registration.pushManager.subscribe({
+                userVisibleOnly: true,
+                applicationServerKey: base64UrlToUint8Array(config.publicKey)
+            });
+        }
+        const staffName = String(document.getElementById("staffName").value || "").trim();
+        const computerName = String(document.getElementById("computerName").value || "").trim();
+        const payload = {
+            action: "registerPushSubscription",
+            spreadsheetId,
+            sheetName: String(document.getElementById("sheetName").value || "LIVE REQUESTS").trim(),
+            historySheetName: String(document.getElementById("historySheetName").value || "HISTORY").trim(),
+            subscription: subscription.toJSON(),
+            staffName,
+            computerName,
+            userAgent: navigator.userAgent,
+            pushApiUrl
+        };
+        const response = await fetch(endpointUrl, {
+            method: "POST",
+            headers: { "Content-Type": "text/plain;charset=utf-8" },
+            body: JSON.stringify(payload),
+            cache: "no-store"
+        });
+        const result = await response.json();
+        if (!response.ok || !result.ok) throw new Error(result.error || "Apps Script could not save this device's push subscription.");
+        if (result.triggerReady) {
+            pushMessage("✓ This device is registered. Background push scheduler is already active.");
+        } else {
+            pushMessage("✓ This device is registered. One-time administrator setup remains: set IRD_PUSH_SECRET in Apps Script/Vercel, then run installPushNotifications() in the Apps Script editor.");
+        }
+    } catch (error) {
+        pushMessage(error && error.message ? error.message : String(error), true);
+    } finally {
+        button.disabled = false;
+    }
+}
+
+const enablePushButton = document.getElementById("enablePush");
+if (enablePushButton) enablePushButton.addEventListener("click", enablePushOnThisDevice);
 
 document.getElementById("fetchStaff").onclick = async () => {
     msg("Fetching staff from Google Sheets...");
@@ -189,15 +290,20 @@ document.getElementById("fetchStaff").onclick = async () => {
             method: "POST",
             body: JSON.stringify({
                 action: "getStaffDirectory",
-                spreadsheetId: sheetId
+                spreadsheetId: sheetId,
+                directorySheetName: "Staff Directory"
             }),
             headers: { "Content-Type": "text/plain" } // Apps script requires text/plain for CORS
         });
         const data = await response.json();
         
-        if (data.ok && data.staff) {
+        if (data.ok && Array.isArray(data.staff)) {
             document.getElementById("staffList").value = data.staff.join(", ");
-            msg("Staff list updated successfully.");
+            if (data.staff.length) {
+                msg(`Staff list updated from ${data.sourceSheet || "Google Sheets"} (${data.staff.length} names).`);
+            } else {
+                msg(`Connected to ${data.sourceSheet || "the staff sheet"}, but no staff names were found in column A. Check that names start below the header.` , true);
+            }
         } else {
             msg("Failed to fetch staff: " + (data.error || "Unknown error"), true);
         }

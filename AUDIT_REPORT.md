@@ -1,47 +1,42 @@
-# IRD Assistant — Audit and Shared-Sync Fix Report
+# IRD Assistant v2.7.9.4 — Notification and Camera Audit / Fix Report
 
-## Confirmed architecture
-Vercel hosts the static frontend. Google Apps Script remains the backend. Google Sheets is the shared source of truth for `LIVE REQUESTS` and `HISTORY`; Google Drive stores task/evidence image files. Per-device `localStorage` is retained only for configuration and temporary cache.
+## Root causes confirmed
+1. `GET_ALERT` and `CLEAR_ALERT` in the Vercel native backend always returned `{ok:true, alert:null}`. Therefore the legacy alert retrieval path could never supply a banner.
+2. The overdue polling loop only attempted `new Notification(...)`; it did not call the app's `showAlert()` function to render `#alertBanner`. It also had a single global 20-second throttle, causing inconsistent multi-task notification behavior.
+3. The image inputs only accepted `image/jpeg,image/png,image/webp`, and there was no explicit camera input or `capture="environment"` control. This prevented the UI from explicitly offering a rear-camera action and filtered out HEIC/other camera MIME types before processing.
 
-## Critical defect fixed
-The Apps Script backend returns response objects directly, for example `{ok:true, rows:[...]}` and `{ok:true, dueAt:"..."}`. Several frontend handlers incorrectly accessed `r.data.rows`, `r.data.dueAt`, `r.data.duration`, and `r.data.message`. Those paths were corrected to read the direct properties. This affected live task refresh, completed history, save confirmation, completion metadata, settings connection feedback, and popup live list.
+## Frontend fixes
+- Added DUE SOON / DUE NOW / OVERDUE evaluation against `dueIso` from shared live rows.
+- Added persistent in-app alert banner display, task count, and click-through to the Tasks tab.
+- Added per-task/per-stage local notification deduplication instead of a single global timer. Audio also uses a per-task key so the alarm is not retried on every polling cycle; a blocked attempt can retry on the next tick.
+- Added Service Worker registration and device notification delivery using `showNotification()` with a standards-based fallback.
+- Added a Settings action to request browser notification permission and register a Push API subscription on each device. User-gesture-sensitive test audio now starts before asynchronous settings reads so browsers do not unnecessarily discard the click activation.
+- Added dedicated Camera actions for New Request images and completion Evidence Images, with `accept="image/*" capture="environment"`. Image pickers support general `image/*` types and return a clear note if a selected file cannot be decoded.
+- Changed normal image selection to accept `image/*`; browser-decodable images are compressed to JPEG for the existing Apps Script Drive upload format.
+- Preserved 5-image limits, image preview/remove functions, and existing Apps Script Drive image payload format.
 
-## Reliability improvements
-- API calls now abort after 15 seconds.
-- Invalid JSON and non-2xx HTTP responses produce explicit errors.
-- Test Notification reports banner permission/display and sound playback independently; it no longer reports unconditional success.
-- Shared polling uses the configured interval (5, 10, 15, 30, or 60 seconds), defaulting to 10 seconds. The local countdown display remains on its one-second UI timer.
+## Backend and delivery additions
+- Added `service-worker.js` for Push events and notification click routing.
+- Added Vercel Node function `api/push.js` and `web-push` dependency in `package.json`.
+- Added Apps Script `registerPushSubscription` action and `PUSH SUBSCRIPTIONS` tab.
+- Added `installPushNotifications()`, `removePushNotificationTrigger()`, and `processDuePushNotifications()`.
+- The push worker adds an optional `Push Notified At` column to LIVE REQUESTS and marks each task only after at least one device reports successful delivery. Expired endpoints (HTTP 404/410) are disabled in `PUSH SUBSCRIPTIONS`.
+- The Apps Script scheduled trigger runs every minute; actual notification delivery may be delayed to the next trigger run.
+- VAPID keys and the shared push secret are not embedded in source. They must be added to Vercel Environment Variables / Apps Script Script Properties as documented in README.md.
 
-## Shared data coverage
-| Data | Shared source | Expected behavior |
-|---|---|---|
-| New Request | LIVE REQUESTS sheet | Visible to all computers after next poll |
-| Pending Tasks | LIVE REQUESTS sheet | Shared |
-| Ack / PIC | LIVE REQUESTS sheet | Shared |
-| Handover | LIVE REQUESTS sheet | Shared |
-| Completed History | HISTORY sheet | Shared, filtered to current local date |
-| Remarks | HISTORY sheet | Shared |
-| Task images | Google Drive references in sheet | Shared |
-| Evidence images | Google Drive references in sheet | Shared |
+## Verification performed in this environment
+- `node --check` passed for `assistant.js`, `options.js`, `popup.js`, `service-worker.js`, `api/push.js`, and a JavaScript copy of Apps Script `Code.gs`.
+- HTML parsing passed for `index.html`, `options.html`, and `popup.html`; no duplicate element IDs were found. JSON parsing passed for the PWA manifest, `package.json`, and Apps Script manifest. PWA icons are verified at 192×192 and 512×512.
+- Static selector checks passed for alert banner, gallery inputs, both camera inputs, and their JS event handlers. Both camera inputs request `capture="environment"`; gallery inputs accept `image/*`.
+- Static Apps Script wiring checks passed for subscription registration, scheduler installation, due-task processing, per-task delivery acknowledgements, and push sheet/marker columns.
+- ZIP integrity is checked during final packaging.
+- Live push delivery, real Android/iOS camera capture, Vercel environment setup, Apps Script authorization, and multi-device notification delivery have not been tested here. The HTML `capture` hint is browser/device-dependent; see README for the expected native chooser behavior and limits.
 
-## Important limitations / acceptance tests
-- `localStorage` is device-local. Configure the same Apps Script URL and Spreadsheet ID on every computer; staff/computer names remain per-device.
-- The app uses polling, not WebSockets or push. With the recommended 10-second interval, changes should normally appear within about one polling cycle plus backend latency.
-- WhatsApp message interception is an extension-only workflow and is not provided by a pure web app. Create requests from the web form.
-- Desktop notifications require browser permission. Audio can be blocked by autoplay policy or background-tab suspension; test on the actual target PCs.
-- Live deployment, Apps Script authorization, spreadsheet permissions, Drive upload, and two-computer operation have not been exercised in this environment.
-
-## Acceptance test checklist
-1. Configure the same endpoint and spreadsheet ID on two separate computers.
-2. Save a test request on Computer A; verify it appears on Computer B within the configured interval.
-3. Ack and hand over on Computer B; verify the PIC and handover state on Computer A.
-4. Complete on Computer A with a remark and evidence image; verify the HISTORY row, remark, and image references on Computer B.
-5. Refresh Completed History on both computers and compare the records.
-6. Test banner and sound permissions separately on each computer.
-
-## Permanent footer status fix (30 October 2026)
-- Root cause confirmed: the native `VercelStorageHandler.get()` implementation supported the callback form only and returned `undefined`. However, `assistant.js` used `await VercelStorage.sync.get(DEFAULTS)`. As a result, the main application merged `DEFAULTS` with `undefined`, so the footer always displayed `Google Sheets not configured` even though the Settings page had saved values and `VercelBackend.sendMessage()` could read them through its callback wrapper.
-- Fixed `get()` to return a resolved Promise containing the retrieved values while retaining the existing asynchronous callback behavior. This fixes both `loadSettings()` and the completed-history local cache reads that also use `await`.
-- Added a shared footer-status renderer and a settings snapshot refresh when the app is restored (`pageshow`), focused, or receives a same-origin `localStorage` update (`storage`). No Apps Script or Google Sheets schema changes were made.
-- Validation: `node --check` passed for `assistant.js`, `options.js`, `popup.js`, and a `.js` copy of Apps Script `Code.gs`. A runtime unit check confirmed both Promise-based and callback-based storage reads return the saved endpoint and Spreadsheet ID. ZIP integrity checked after packaging.
-- Live Vercel deployment and multi-computer behavior still require acceptance testing in the user's environment; this change specifically fixes local settings retrieval and footer status refresh.
+## Expected deployment sequence
+1. Deploy frontend root including `/api/push.js`, `package.json`, `service-worker.js`, manifest and icons to Vercel.
+2. Configure VAPID and shared secret environment variables in Vercel and redeploy.
+3. Replace Apps Script Code.gs with the included updated backend and deploy a new Web App version.
+4. Add the same `IRD_PUSH_SECRET` to Apps Script Script Properties.
+5. Enable notifications on each device from the app Settings.
+6. Run `installPushNotifications()` once from the Apps Script editor and authorize it.
+7. Test DUE SOON, DUE NOW, OVERDUE, app-closed push, gallery selection, camera capture, Drive upload and completed evidence display.

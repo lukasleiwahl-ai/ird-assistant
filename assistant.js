@@ -61,8 +61,9 @@ window.VercelBackend = {
     },
     sendMessage: async function(message, callback) {
         const getSettings = () => new Promise(res => window.VercelStorage.sync.get(['endpointUrl', 'spreadsheetId', 'sheetName', 'historySheetName', 'staffName', 'computerName', 'reminderMinutes'], res));
-        const s = await getSettings();
-        
+
+        // Run user-gesture-sensitive local tests before awaiting settings storage.
+        // This lets the audio test retain the browser's transient user activation.
         if (message.type === 'TEST_NOTIFICATION') {
             let soundOk = !message.withSound;
             let bannerOk = false;
@@ -79,13 +80,19 @@ window.VercelBackend = {
                 }
             }
             if (typeof Notification === "undefined") {
-                bannerError = "This browser does not support desktop notifications.";
+                bannerError = "This browser does not support notifications.";
             } else {
                 try {
                     let permission = Notification.permission;
                     if (permission === "default") permission = await Notification.requestPermission();
                     if (permission === "granted") {
-                        new Notification("IRD Assistant", {body: "Test Banner Berhasil!", icon: "icon48.png"});
+                        if ("serviceWorker" in navigator) {
+                            await navigator.serviceWorker.register("./service-worker.js");
+                            const registration = await navigator.serviceWorker.ready;
+                            await registration.showNotification("IRD Assistant", {body:"Test Banner Berhasil!", icon:"./icon128.png", badge:"./icon48.png", tag:"ird-test-banner", data:{url:"./index.html?tab=tasks"}});
+                        } else {
+                            new Notification("IRD Assistant", {body:"Test Banner Berhasil!", icon:"./icon48.png"});
+                        }
                         bannerOk = true;
                     } else bannerError = "Notification permission is " + permission + ". Allow notifications for this site in browser settings.";
                 } catch(e) { bannerError = "Could not display notification: " + String(e && e.message || e); }
@@ -116,6 +123,7 @@ window.VercelBackend = {
             return {ok: true};
         }
 
+        const s = await getSettings();
         if (!s.endpointUrl) return {ok: false, error: "Web App URL belum diisi di Settings."};
         if (!s.spreadsheetId) return {ok: false, error: "Spreadsheet ID belum diisi di Settings."};
         
@@ -250,15 +258,86 @@ function updateDueFromTiming(){
   $('dueTime').value=localTimeInputValue(due);
 }
 async function getPending(){const r=await VercelBackend.sendMessage({type:'GET_PENDING'});return r?.ok?r.request:null;}
-async function getAlert(){const r=await VercelBackend.sendMessage({type:'GET_ALERT'});return r?.ok?r.alert:null;}
 function showAlert(alert){
-  if(!alert){$('alertBanner').className='alert hidden';$('alertBanner').innerHTML='';return;}
-  $('alertBanner').className=`alert ${esc(alert.level||'due')}`;
-  let extra='';
-  if(alert.level==='soon') extra=`Due in ${esc(alert.reminderMinutes||5)} min`;
-  if(alert.level==='overdue') extra=`Overdue by ${esc(alert.overdueMinutes||1)} min`;
-  if(alert.level==='due') extra='Due now';
-  $('alertBanner').innerHTML=`🔔 ${esc(alert.label||'REMINDER')} • Room ${esc(alert.room||'-')}<small>${esc(alert.request||'Guest request')} • ${esc(extra)} • Due ${esc(alert.dueAt||'-')}</small>`;
+  const banner=$('alertBanner');
+  if(!alert){banner.className='alert hidden';banner.innerHTML='';return;}
+  banner.className=`alert ${esc(alert.level||'due')}`;
+  const extra=alert.level==='soon'?`Due in ${esc(alert.reminderMinutes||5)} min`:alert.level==='overdue'?`Overdue by ${esc(alert.overdueMinutes||1)} min`:'Due now';
+  const count=Number(alert.count||1);
+  banner.innerHTML=`<span class="alert-title">🔔 ${esc(alert.label||'REMINDER')} • Room ${esc(alert.room||'-')}</span><small>${esc(alert.request||'Guest request')} • ${extra} • Due ${esc(alert.dueAt||'-')}${count>1?` • +${count-1} more task(s)`:''}</small>`;
+  banner.setAttribute('role','alert');
+  banner.setAttribute('aria-live','assertive');
+}
+
+async function ensureServiceWorker(){
+  if(!('serviceWorker' in navigator) || !window.isSecureContext) return null;
+  try { return await navigator.serviceWorker.register('./service-worker.js',{scope:'./'}); }
+  catch(error){ console.warn('IRD Assistant service worker registration failed:',error); return null; }
+}
+
+async function showDeviceNotification(title,body,tag,requestId){
+  if(typeof Notification==='undefined' || Notification.permission!=='granted') return false;
+  try{
+    let registration=await navigator.serviceWorker?.getRegistration();
+    if(!registration) registration=await ensureServiceWorker();
+    if(registration && navigator.serviceWorker){
+      registration=await navigator.serviceWorker.ready;
+    }
+    if(registration && registration.showNotification){
+      await registration.showNotification(title,{body,icon:'./icon128.png',badge:'./icon48.png',tag,renotify:false,requireInteraction:true,data:{url:'./index.html?tab=tasks',requestId}});
+    }else{
+      new Notification(title,{body,icon:'./icon48.png',tag});
+    }
+    return true;
+  }catch(error){console.warn('Notification display failed:',error);return false;}
+}
+
+function evaluateDueNotifications(rows){
+  const now=Date.now();
+  const reminderMs=Math.max(0,Number(settings.reminderMinutes)||0)*60000;
+  const active=[];
+  (Array.isArray(rows)?rows:[]).forEach(row=>{
+    const dueMs=Date.parse(row.dueIso||'');
+    if(!Number.isFinite(dueMs)) return;
+    const diff=dueMs-now;
+    let level='';
+    if(diff<=-60000) level='overdue';
+    else if(diff<=0) level='due';
+    else if(reminderMs>0 && diff<=reminderMs) level='soon';
+    if(level) active.push({row,diff,level,dueMs});
+  });
+  const rank={overdue:0,due:1,soon:2};
+  active.sort((a,b)=>rank[a.level]-rank[b.level] || a.dueMs-b.dueMs);
+  if(!active.length){showAlert(null);return;}
+  const first=active[0],row=first.row;
+  const label=first.level==='overdue'?'OVERDUE':first.level==='due'?'DUE NOW':'DUE SOON';
+  showAlert({level:first.level,label,room:row.room,request:row.request,dueAt:row.dueAt,reminderMinutes:Math.ceil(first.diff/60000),overdueMinutes:Math.max(1,Math.floor(-first.diff/60000)),count:active.length});
+
+  active.forEach(item=>{
+    const id=String(item.row.id||'');
+    if(!id) return;
+    const stage=item.level;
+    const key=`ird-notified:${id}:${stage}`;
+    if(localStorage.getItem(key)) return;
+    const rowItem=item.row;
+    const noticeTitle=stage==='overdue'?'IRD Assistant — OVERDUE':stage==='due'?'IRD Assistant — DUE NOW':'IRD Assistant — DUE SOON';
+    const noticeBody=`Room ${rowItem.room||'-'} • ${rowItem.request||'Guest request'}`;
+    if(typeof Notification!=='undefined' && Notification.permission==='granted'){
+      localStorage.setItem(key,'pending');
+      void showDeviceNotification(noticeTitle,noticeBody,`ird-${id}`,id).then(shown=>{
+        if(shown) localStorage.setItem(key,String(Date.now()));
+        else localStorage.removeItem(key);
+      });
+    }
+    if(stage==='due' && String(rowItem.notification||'banner').includes('alarm')){
+      const alarmKey=`ird-alarm:${id}:due`;
+      if(!localStorage.getItem(alarmKey)){
+        localStorage.setItem(alarmKey,'pending');
+        const audio=new Audio('./order_overdue_alarm.wav');
+        audio.play().then(()=>localStorage.setItem(alarmKey,String(Date.now()))).catch(()=>localStorage.removeItem(alarmKey));
+      }
+    }
+  });
 }
 function populate(p){
   pending=p||null;
@@ -283,7 +362,7 @@ function imageDataUrlSizeBytes(dataUrl){
   return Math.floor((b64.length*3)/4) - (b64.endsWith('==')?2:b64.endsWith('=')?1:0);
 }
 function revokeAttachedUrls(){
-  attachedImages.forEach(x=>{if(x.previewUrl) URL.revokeObjectURL(x.previewUrl);});
+  attachedImages.forEach(x=>{if(String(x.previewUrl||'').startsWith('blob:')) URL.revokeObjectURL(x.previewUrl);});
 }
 function resetAttachedImages(){revokeAttachedUrls();attachedImages=[];renderAttachedImages();}
 function renderAttachedImages(){
@@ -293,7 +372,7 @@ function renderAttachedImages(){
   const note=$('imageUploadNote');
   if(note) note.textContent=attachedImages.length?`${attachedImages.length} image${attachedImages.length===1?'':'s'} attached. Images are stored in Google Drive when the task is saved.`:'';
 }
-function fileToDataUrl(file){return new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(String(r.result||''));r.onerror=()=>reject(r.error||new Error('Could not read image.'));r.readAsDataURL(file);});}
+function fileToDataUrl(file){return new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(String(r.result||''));r.onerror=()=>reject(r.error||new Error('Could not read image.'));const ext=String(file?.name||'').toLowerCase();const fallbackMime=/\.png$/.test(ext)?'image/png':/\.webp$/.test(ext)?'image/webp':/\.heif$/.test(ext)?'image/heif':/\.heic$/.test(ext)?'image/heic':'image/jpeg';const source=String(file?.type||'').startsWith('image/')?file:new Blob([file],{type:fallbackMime});r.readAsDataURL(source);});}
 function renderRemarkImages(){
   const grid=$('remarkImagePreviewGrid');
   if(!grid) return;
@@ -301,19 +380,29 @@ function renderRemarkImages(){
   const note=$('remarkImageUploadNote');
   if(note) note.textContent=attachedRemarkImages.length?`${attachedRemarkImages.length} evidence image${attachedRemarkImages.length===1?'':'s'} attached.`:'';
 }
-function revokeRemarkImageUrls(){attachedRemarkImages.forEach(x=>{if(x.previewUrl) URL.revokeObjectURL(x.previewUrl);});}
+function revokeRemarkImageUrls(){attachedRemarkImages.forEach(x=>{if(String(x.previewUrl||'').startsWith('blob:')) URL.revokeObjectURL(x.previewUrl);});}
 function resetRemarkImages(){revokeRemarkImageUrls();attachedRemarkImages=[];renderRemarkImages();}
+function isImageFile(file){
+  if(!file) return false;
+  const type=String(file.type||'').toLowerCase();
+  const name=String(file.name||'').toLowerCase();
+  return type.startsWith('image/') || /\.(jpe?g|png|webp|heic|heif|avif|gif|bmp)$/i.test(name);
+}
+function normalizedImageName(file,index){
+  const base=String(file?.name||`image-${index+1}`).replace(/\.[^.]+$/,'').replace(/[^a-zA-Z0-9_-]+/g,'_').slice(0,80)||`image-${index+1}`;
+  return `${base}.jpg`;
+}
 async function compressImageFile(file){
-  if(!/^image\/(jpeg|png|webp)$/i.test(file.type)) throw new Error(`${file.name||'File'} is not a supported image.`);
+  if(!isImageFile(file)) throw new Error(`${file?.name||'File'} is not a supported image.`);
   const source=await fileToDataUrl(file);
   const img=new Image();
-  await new Promise((resolve,reject)=>{img.onload=resolve;img.onerror=()=>reject(new Error('Invalid image file.'));img.src=source;});
+  await new Promise((resolve,reject)=>{img.onload=resolve;img.onerror=()=>reject(new Error('This photo format could not be opened by the browser. On iPhone, set Camera > Formats > Most Compatible, then take the photo again.'));img.src=source;});
   const maxSide=1600;
   const scale=Math.min(1,maxSide/Math.max(img.naturalWidth||img.width,img.naturalHeight||img.height));
   const w=Math.max(1,Math.round((img.naturalWidth||img.width)*scale));
   const h=Math.max(1,Math.round((img.naturalHeight||img.height)*scale));
   const canvas=document.createElement('canvas');canvas.width=w;canvas.height=h;
-  const ctx=canvas.getContext('2d');ctx.drawImage(img,0,0,w,h);
+  const ctx=canvas.getContext('2d');if(!ctx) throw new Error('Image processing is unavailable in this browser.');ctx.drawImage(img,0,0,w,h);
   const dataUrl=canvas.toDataURL('image/jpeg',0.82);
   const bytes=imageDataUrlSizeBytes(dataUrl);
   if(bytes>1400000) {
@@ -324,36 +413,40 @@ async function compressImageFile(file){
   return dataUrl;
 }
 async function addImageFiles(files){
-  const list=Array.from(files||[]).filter(f=>f && /^image\/(jpeg|png|webp)$/i.test(f.type));
-  if(!list.length) return;
+  const allFiles=Array.from(files||[]);
+  const list=allFiles.filter(isImageFile);
+  if(!list.length){if(allFiles.length) $('imageUploadNote').textContent='Please select a supported photo (JPG, PNG, WebP or a browser-supported camera image).';return;}
   const remaining=5-attachedImages.length;
   if(remaining<=0){$('imageUploadNote').textContent='Maximum 5 images per task.';return;}
   const selected=list.slice(0,remaining);
-  if(list.length>remaining) $('imageUploadNote').textContent='Maximum 5 images per task. Extra images were not added.';
+  const notes=[];
+  if(list.length>remaining) notes.push('Maximum 5 images per task. Extra images were not added.');
   for(const file of selected){
     try{
       const dataUrl=await compressImageFile(file);
-      const previewUrl=URL.createObjectURL(file);
-      attachedImages.push({name:file.name||`image-${attachedImages.length+1}.jpg`,mimeType:'image/jpeg',dataUrl,previewUrl});
-    }catch(e){$('imageUploadNote').textContent=e?.message||String(e);}
+      attachedImages.push({name:normalizedImageName(file,attachedImages.length),mimeType:'image/jpeg',dataUrl,previewUrl:dataUrl});
+    }catch(e){notes.push(e?.message||String(e));}
   }
   renderAttachedImages();
+  if(notes.length) $('imageUploadNote').textContent=notes.join(' ');
 }
 async function addRemarkImageFiles(files){
-  const list=Array.from(files||[]).filter(f=>f && /^image\/(jpeg|png|webp)$/i.test(f.type));
-  if(!list.length) return;
+  const allFiles=Array.from(files||[]);
+  const list=allFiles.filter(isImageFile);
+  if(!list.length){if(allFiles.length) $('remarkImageUploadNote').textContent='Please select a supported evidence photo.';return;}
   const remaining=5-attachedRemarkImages.length;
   if(remaining<=0){$('remarkImageUploadNote').textContent='Maximum 5 evidence images.';return;}
   const selected=list.slice(0,remaining);
-  if(list.length>remaining) $('remarkImageUploadNote').textContent='Maximum 5 evidence images. Extra images were not added.';
+  const notes=[];
+  if(list.length>remaining) notes.push('Maximum 5 evidence images. Extra images were not added.');
   for(const file of selected){
     try{
       const dataUrl=await compressImageFile(file);
-      const previewUrl=URL.createObjectURL(file);
-      attachedRemarkImages.push({name:file.name||`remark-${attachedRemarkImages.length+1}.jpg`,mimeType:'image/jpeg',dataUrl,previewUrl});
-    }catch(e){$('remarkImageUploadNote').textContent=e?.message||String(e);}
+      attachedRemarkImages.push({name:normalizedImageName(file,attachedRemarkImages.length),mimeType:'image/jpeg',dataUrl,previewUrl:dataUrl});
+    }catch(e){notes.push(e?.message||String(e));}
   }
   renderRemarkImages();
+  if(notes.length) $('remarkImageUploadNote').textContent=notes.join(' ');
 }
 function imageRefsFromRow(row){
   if(Array.isArray(row?.images)) return row.images;
@@ -787,20 +880,27 @@ VercelBackend.onMessage.addListener(msg=>{
   if(msg?.type==='PREFILL_REQUEST') populate(msg.request||{});
   if(msg?.type==='TASK_ALERT'){showAlert(msg.alert);switchTab('tasks');refreshTasks();}
 });
-$('chooseImages').onclick=()=>$('imageInput').click();
+$('alertBanner').addEventListener('click',()=>switchTab('tasks'));
+// Primary Add Image action opens the rear camera on supported mobile browsers.
+$('chooseImages').onclick=()=>$('cameraInput').click();
+$('chooseGalleryImages').onclick=()=>$('imageInput').click();
 $('imageDropzone').onclick=()=>$('imageInput').click();
 $('imageInput').addEventListener('change',e=>{addImageFiles(e.target.files);e.target.value='';});
+$('cameraInput').addEventListener('change',e=>{addImageFiles(e.target.files);e.target.value='';});
 ['dragenter','dragover'].forEach(type=>$('imageDropzone').addEventListener(type,e=>{e.preventDefault();e.stopPropagation();$('imageDropzone').classList.add('dragover');}));
 ['dragleave','drop'].forEach(type=>$('imageDropzone').addEventListener(type,e=>{e.preventDefault();e.stopPropagation();$('imageDropzone').classList.remove('dragover');}));
 $('imageDropzone').addEventListener('drop',e=>addImageFiles(e.dataTransfer.files));
-$('imagePreviewGrid').addEventListener('click',e=>{const btn=e.target.closest('.image-remove');if(!btn)return;const i=Number(btn.dataset.index);if(Number.isInteger(i)&&attachedImages[i]){if(attachedImages[i].previewUrl)URL.revokeObjectURL(attachedImages[i].previewUrl);attachedImages.splice(i,1);renderAttachedImages();}});
-$('chooseRemarkImages').onclick=()=>$('remarkImageInput').click();
+$('imagePreviewGrid').addEventListener('click',e=>{const btn=e.target.closest('.image-remove');if(!btn)return;const i=Number(btn.dataset.index);if(Number.isInteger(i)&&attachedImages[i]){if(String(attachedImages[i].previewUrl||'').startsWith('blob:'))URL.revokeObjectURL(attachedImages[i].previewUrl);attachedImages.splice(i,1);renderAttachedImages();}});
+// Primary Evidence Add Image action opens the rear camera on supported mobile browsers.
+$('chooseRemarkImages').onclick=()=>$('remarkCameraInput').click();
+$('chooseRemarkGalleryImages').onclick=()=>$('remarkImageInput').click();
 $('remarkImageDropzone').onclick=()=>$('remarkImageInput').click();
 $('remarkImageInput').addEventListener('change',e=>{addRemarkImageFiles(e.target.files);e.target.value='';});
+$('remarkCameraInput').addEventListener('change',e=>{addRemarkImageFiles(e.target.files);e.target.value='';});
 ['dragenter','dragover'].forEach(type=>$('remarkImageDropzone').addEventListener(type,e=>{e.preventDefault();e.stopPropagation();$('remarkImageDropzone').classList.add('dragover');}));
 ['dragleave','drop'].forEach(type=>$('remarkImageDropzone').addEventListener(type,e=>{e.preventDefault();e.stopPropagation();$('remarkImageDropzone').classList.remove('dragover');}));
 $('remarkImageDropzone').addEventListener('drop',e=>addRemarkImageFiles(e.dataTransfer.files));
-$('remarkImagePreviewGrid').addEventListener('click',e=>{const btn=e.target.closest('.remark-image-remove');if(!btn)return;const i=Number(btn.dataset.index);if(Number.isInteger(i)&&attachedRemarkImages[i]){if(attachedRemarkImages[i].previewUrl)URL.revokeObjectURL(attachedRemarkImages[i].previewUrl);attachedRemarkImages.splice(i,1);renderRemarkImages();}});
+$('remarkImagePreviewGrid').addEventListener('click',e=>{const btn=e.target.closest('.remark-image-remove');if(!btn)return;const i=Number(btn.dataset.index);if(Number.isInteger(i)&&attachedRemarkImages[i]){if(String(attachedRemarkImages[i].previewUrl||'').startsWith('blob:'))URL.revokeObjectURL(attachedRemarkImages[i].previewUrl);attachedRemarkImages.splice(i,1);renderRemarkImages();}});
 document.addEventListener('paste',e=>{const files=Array.from(e.clipboardData?.files||[]).filter(f=>f.type.startsWith('image/'));if(!files.length)return;const modalVisible=!$('remarkModal').classList.contains('hidden');const active=document.activeElement;if(modalVisible){e.preventDefault();addRemarkImageFiles(files);return;}if(active?.id==='request'||active?.tagName==='BODY'||active?.id==='imageDropzone'){e.preventDefault();addImageFiles(files);}});
 document.querySelectorAll('input[name="completionMode"]').forEach(input=>input.addEventListener('change',()=>setCompletionMode(input.value)));
 
@@ -810,7 +910,9 @@ async function boot(){
   // it was explicitly opened from a WhatsApp message with pendingRequest.
   const p=await getPending();
   if(p) populate(p); else resetForm();
-  const alert=await getAlert();if(alert){showAlert(alert);switchTab('tasks');await VercelBackend.sendMessage({type:'CLEAR_ALERT'});}
+  await ensureServiceWorker();
+  const queryTab=new URLSearchParams(window.location.search).get('tab');
+  if(queryTab==='tasks') switchTab('tasks');
   completedRows=await loadCompletedCache(completedDateKeyNow());
   renderCompleted();
   await Promise.all([refreshTasks(), refreshCompleted()]);
@@ -868,38 +970,8 @@ async function realtimeSyncTick(){
       await refreshCompleted();
     }
     
-    // --- VERCEL NATIVE ALARM & NOTIFICATION EVALUATION ---
-    if (!window.lastAlarmTime) window.lastAlarmTime = 0;
-    const now = Date.now();
-    
-    // Cek setiap 20 detik agar suara/banner tidak spam bertubi-tubi
-    if (now - window.lastAlarmTime > 20000) { 
-        let shouldPlayAlarm = false;
-        let shouldShowBanner = false;
-        
-        liveRows.forEach(row => {
-            const dueMs = Date.parse(row.dueIso||"");
-            if (Number.isFinite(dueMs)) {
-                const diff = dueMs - now;
-                // Jika overdue atau due now
-                if (diff <= 0) {
-                    const notifPref = row.notification || "banner";
-                    if (notifPref.includes("alarm")) shouldPlayAlarm = true;
-                    shouldShowBanner = true;
-                }
-            }
-        });
-        
-        if (shouldPlayAlarm) {
-            new Audio('order_overdue_alarm.wav').play().catch(()=>{});
-        }
-        if (shouldShowBanner && Notification.permission === 'granted') {
-            new Notification("Tugas Overdue!", {body: "Ada pesanan tamu yang telah melewati batas waktu SLA.", icon: "icon48.png"});
-        }
-        if (shouldPlayAlarm || shouldShowBanner) {
-            window.lastAlarmTime = now;
-        }
-    }
+    // Evaluate shared task due times into an in-app banner, device notification and optional alarm.
+    evaluateDueNotifications(liveRows);
 
   } catch (_) {}
   finally {realtimeSyncBusy=false; }

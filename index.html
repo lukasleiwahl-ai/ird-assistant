@@ -2,7 +2,12 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0b8f5a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon192.png">
 <title>IRD Assistant</title>
 <link rel="stylesheet" href="assistant.css">
 </head>
@@ -36,9 +41,10 @@
         </div>
         <label>Request / Note <span>*</span><textarea id="request" required placeholder="Extra towel, amenity, room assistance..."></textarea></label>
         <section class="image-upload" id="imageUploadArea">
-          <div class="image-upload-head"><div><b>Add Image</b><small>Paste, drag & drop, or choose image</small></div><button type="button" class="secondary small-btn" id="chooseImages">＋ Add Image</button></div>
-          <input id="imageInput" type="file" accept="image/jpeg,image/png,image/webp" multiple hidden>
-          <div id="imageDropzone" class="image-dropzone" tabindex="0"><div class="image-drop-icon">▧</div><b>Paste image here (Ctrl + V)</b><span>or drag & drop / click to add image</span><small>JPG, PNG, WebP • up to 5 images</small></div>
+          <div class="image-upload-head"><div><b>Add Image</b><small>Take a photo with your camera or choose from gallery</small></div><div class="image-action-buttons"><button type="button" class="secondary small-btn camera-btn" id="chooseImages">📷 Add Image (Camera)</button><button type="button" class="secondary small-btn" id="chooseGalleryImages">🖼 Gallery</button></div></div>
+          <input id="imageInput" class="file-input-hidden" type="file" accept="image/*" multiple>
+          <input id="cameraInput" class="file-input-hidden" type="file" accept="image/*" capture="environment">
+          <div id="imageDropzone" class="image-dropzone" tabindex="0"><div class="image-drop-icon">▧</div><b>Paste image here (Ctrl + V)</b><span>or drag & drop / use Camera or Gallery above</span><small>JPG, PNG, WebP • up to 5 images</small></div>
           <div id="imagePreviewGrid" class="image-preview-grid"></div>
           <div id="imageUploadNote" class="image-upload-note"></div>
         </section>
@@ -65,13 +71,13 @@
               <input type="radio" name="notification" value="banner" checked>
               <span class="radio-ui"></span>
               <span class="notification-icon">🔔</span>
-              <span class="notification-copy"><b>Pop-up banner</b><small>Windows notification banner only.</small></span>
+              <span class="notification-copy"><b>Pop-up banner</b><small>In-app and device notification banner.</small></span>
             </label>
             <label class="notification-option" data-value="banner-alarm">
               <input type="radio" name="notification" value="banner-alarm">
               <span class="radio-ui"></span>
               <span class="notification-icon">🔔</span>
-              <span class="notification-copy"><b>Pop-up banner + Alarm</b><small>Windows banner and play alarm when due.</small></span>
+              <span class="notification-copy"><b>Pop-up banner + Alarm</b><small>In-app/device banner and play alarm when due.</small></span>
             </label>
           </div>
         </fieldset>
@@ -108,9 +114,10 @@
       </div>
       <label id="remarkFieldLabel">Remark <span id="remarkRequired">*</span><textarea id="remarkInput" placeholder="Example: Towel delivered. Amenities not available, will send later."></textarea></label>
       <section class="remark-evidence" id="remarkEvidenceArea">
-        <div class="remark-evidence-head"><div><b>Evidence Image</b><small>Paste, drag & drop, or choose image</small></div><button type="button" class="secondary small-btn" id="chooseRemarkImages">＋ Add Image</button></div>
-        <input id="remarkImageInput" type="file" accept="image/jpeg,image/png,image/webp" multiple hidden>
-        <div id="remarkImageDropzone" class="image-dropzone remark-dropzone" tabindex="0"><div class="image-drop-icon">▧</div><b>Paste evidence image here (Ctrl + V)</b><span>or drag & drop / click to add image</span><small>JPG, PNG, WebP • up to 5 images</small></div>
+        <div class="remark-evidence-head"><div><b>Evidence Image</b><small>Take a photo with your camera or choose from gallery</small></div><div class="image-action-buttons"><button type="button" class="secondary small-btn camera-btn" id="chooseRemarkImages">📷 Add Image (Camera)</button><button type="button" class="secondary small-btn" id="chooseRemarkGalleryImages">🖼 Gallery</button></div></div>
+        <input id="remarkImageInput" class="file-input-hidden" type="file" accept="image/*" multiple>
+        <input id="remarkCameraInput" class="file-input-hidden" type="file" accept="image/*" capture="environment">
+        <div id="remarkImageDropzone" class="image-dropzone remark-dropzone" tabindex="0"><div class="image-drop-icon">▧</div><b>Paste evidence image here (Ctrl + V)</b><span>or drag & drop / use Camera or Gallery above</span><small>JPG, PNG, WebP • up to 5 images</small></div>
         <div id="remarkImagePreviewGrid" class="image-preview-grid"></div>
         <div id="remarkImageUploadNote" class="image-upload-note"></div>
       </section>
