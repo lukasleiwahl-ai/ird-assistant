@@ -1,79 +1,139 @@
-
-// --- VERCEL WEB APP POLYFILL (Replaces Chrome Extension APIs) ---
-window.chrome = window.chrome || {};
-
-chrome.storage = chrome.storage || {};
-const _storageHandler = {
-  get: function(keys, callback) {
-    let result = {};
-    if (keys === null) {
-      for (let i = 0; i < localStorage.length; i++) {
-        let k = localStorage.key(i);
-        try { result[k] = JSON.parse(localStorage.getItem(k)); } catch(e) { result[k] = localStorage.getItem(k); }
-      }
-    } else if (typeof keys === 'string') {
-      let val = localStorage.getItem(keys);
-      try { result[keys] = val ? JSON.parse(val) : undefined; } catch(e) { result[keys] = val; }
-    } else if (Array.isArray(keys)) {
-      keys.forEach(k => {
-        let val = localStorage.getItem(k);
-        try { result[k] = val ? JSON.parse(val) : undefined; } catch(e) { result[k] = val; }
-      });
-    } else if (typeof keys === 'object') {
-      Object.keys(keys).forEach(k => {
-        let val = localStorage.getItem(k);
-        if (val !== null) {
-          try { result[k] = JSON.parse(val); } catch(e) { result[k] = val; }
-        } else {
-          result[k] = keys[k];
+// --- VERCEL NATIVE BACKEND ---
+window.VercelStorageHandler = {
+    get: function(keys, callback) {
+        let result = {};
+        if (keys === null) {
+            for (let i = 0; i < localStorage.length; i++) {
+                let k = localStorage.key(i);
+                try { result[k] = JSON.parse(localStorage.getItem(k)); } catch(e) { result[k] = localStorage.getItem(k); }
+            }
+        } else if (typeof keys === 'string') {
+            let val = localStorage.getItem(keys);
+            try { result[keys] = val ? JSON.parse(val) : undefined; } catch(e) { result[keys] = val; }
+        } else if (Array.isArray(keys)) {
+            keys.forEach(k => {
+                let val = localStorage.getItem(k);
+                try { result[k] = val ? JSON.parse(val) : undefined; } catch(e) { result[k] = val; }
+            });
+        } else if (typeof keys === 'object') {
+            Object.keys(keys).forEach(k => {
+                let val = localStorage.getItem(k);
+                if (val !== null) {
+                    try { result[k] = JSON.parse(val); } catch(e) { result[k] = val; }
+                } else {
+                    result[k] = keys[k];
+                }
+            });
         }
-      });
+        if (callback) setTimeout(() => callback(result), 0);
+    },
+    set: function(data, callback) {
+        Object.keys(data).forEach(k => {
+            let val = typeof data[k] === 'object' ? JSON.stringify(data[k]) : data[k];
+            localStorage.setItem(k, val);
+        });
+        if (callback) setTimeout(callback, 0);
+    },
+    remove: function(keys, callback) {
+        let keyList = Array.isArray(keys) ? keys : [keys];
+        keyList.forEach(k => localStorage.removeItem(k));
+        if (callback) setTimeout(callback, 0);
     }
-    if (callback) setTimeout(() => callback(result), 0);
-  },
-  set: function(data, callback) {
-    Object.keys(data).forEach(k => {
-      let val = typeof data[k] === 'object' ? JSON.stringify(data[k]) : data[k];
-      localStorage.setItem(k, val);
-    });
-    if (callback) setTimeout(callback, 0);
-  },
-  remove: function(keys, callback) {
-    let keyList = Array.isArray(keys) ? keys : [keys];
-    keyList.forEach(k => localStorage.removeItem(k));
-    if (callback) setTimeout(callback, 0);
-  }
 };
-chrome.storage.sync = chrome.storage.sync || _storageHandler;
-chrome.storage.local = chrome.storage.local || _storageHandler;
+window.VercelStorage = { sync: window.VercelStorageHandler, local: window.VercelStorageHandler };
 
-chrome.runtime = chrome.runtime || {};
-chrome.runtime.openOptionsPage = function() {
-  window.location.href = 'options.html';
-};
-chrome.runtime.getManifest = function() {
-  return { version: "3.0 (Web Native)" };
-};
-chrome.runtime.sendMessage = function(message, callback) {
-  if (message.action === 'playAlarm' || message.action === 'testAlarm') {
-    const alarm = new Audio('order_overdue_alarm.wav');
-    alarm.play().catch(e => console.warn('Audio play required user interaction', e));
-    if (callback) callback({ success: true });
-  }
-};
-chrome.runtime.onMessage = chrome.runtime.onMessage || {
-  addListener: function(fn) {
-    window.addEventListener('message', (e) => {
-       if (e.data && e.data.action) fn(e.data, {}, () => {});
-    });
-  }
+window.VercelTabs = {
+    create: function(opt) { window.open(opt.url, '_blank'); }
 };
 
-chrome.tabs = chrome.tabs || {};
-chrome.tabs.create = function(opt) {
-  window.open(opt.url, '_blank');
+window.VercelBackend = {
+    openOptionsPage: function() { window.location.href = 'options.html'; },
+    onMessage: {
+        addListener: function(fn) {
+            window.addEventListener('message', (e) => {
+                if (e.data && e.data.action) fn(e.data, {}, () => {});
+            });
+        }
+    },
+    sendMessage: async function(message, callback) {
+        const getSettings = () => new Promise(res => window.VercelStorage.sync.get(['endpointUrl', 'spreadsheetId', 'sheetName', 'historySheetName', 'staffName', 'computerName', 'reminderMinutes'], res));
+        const s = await getSettings();
+        
+        if (message.type === 'TEST_NOTIFICATION') {
+            let soundOk = false;
+            if (message.withSound) {
+                try { 
+                    const audio = new Audio('order_overdue_alarm.wav');
+                    await audio.play();
+                    soundOk = true; 
+                } catch(e){ console.warn("Audio blocked by browser:", e); }
+            }
+            
+            if (Notification.permission !== 'granted' && Notification.permission !== 'denied') {
+                try { await Notification.requestPermission(); } catch(e){}
+            }
+            if (Notification.permission === 'granted') {
+                try { new Notification("IRD Assistant", {body: "Test Banner Berhasil!", icon: "icon48.png"}); } catch(e){}
+            }
+            
+            const res = {ok: true, sound: soundOk, message: "Tested"};
+            if(callback) callback(res);
+            return res;
+        }
+        
+        if (message.action === 'playAlarm' || message.type === 'PLAY_ALARM') {
+            try { new Audio('order_overdue_alarm.wav').play(); } catch(e){}
+            return {ok: true};
+        }
+
+        if (message.type === 'GET_PENDING') {
+            const p = localStorage.getItem('pendingRequest');
+            return p ? {ok: true, request: JSON.parse(p)} : {ok: false};
+        }
+        if (message.type === 'CLEAR_PENDING') {
+            localStorage.removeItem('pendingRequest');
+            return {ok: true};
+        }
+        if (message.type === 'GET_ALERT' || message.type === 'CLEAR_ALERT') {
+            return {ok: true, alert: null};
+        }
+        if (message.type === 'EVALUATE_LOCAL_NOTIFICATIONS') {
+            return {ok: true};
+        }
+
+        if (!s.endpointUrl) return {ok: false, error: "Web App URL belum diisi di Settings."};
+        if (!s.spreadsheetId) return {ok: false, error: "Spreadsheet ID belum diisi di Settings."};
+        
+        let payload = { spreadsheetId: s.spreadsheetId };
+        switch (message.type) {
+            case 'TEST_CONNECTION': payload.action = 'testConnection'; break;
+            case 'SAVE_REQUEST': payload.action = 'createRequest'; payload.request = message.request; payload.staffName = s.staffName; payload.computerName = s.computerName; break;
+            case 'LIST_LIVE': 
+            case 'SYNC_NOW': payload.action = 'listLive'; payload.sheetName = s.sheetName || 'LIVE REQUESTS'; payload.reminderMinutes = s.reminderMinutes || 5; break;
+            case 'LIST_TODAY_HISTORY': payload.action = 'listTodayHistory'; payload.historySheetName = s.historySheetName || 'HISTORY'; payload.clientDateKey = message.clientDateKey; break;
+            case 'ACKNOWLEDGE_REQUEST': payload.action = 'acknowledgeRequest'; Object.assign(payload, message); break;
+            case 'HANDOVER_REQUEST': payload.action = 'handoverRequest'; Object.assign(payload, message); break;
+            case 'COMPLETE_REQUEST': payload.action = 'completeRequest'; Object.assign(payload, message); break;
+            default: return {ok: false, error: "Unknown action: " + message.type};
+        }
+        
+        try {
+            const response = await fetch(s.endpointUrl, {
+                method: "POST",
+                body: JSON.stringify(payload),
+                headers: { "Content-Type": "text/plain" }
+            });
+            const data = await response.json();
+            if (callback) callback(data);
+            return data;
+        } catch (e) {
+            const err = {ok: false, error: "Network Error: Pastikan URL Web App benar dan di-deploy Anyone/Me. (" + e.message + ")"};
+            if (callback) callback(err);
+            return err;
+        }
+    }
 };
-// --- END POLYFILL ---
+// --- END VERCEL NATIVE BACKEND ---
 
 // v2.7.9.3 desktop Ack/Handover: controls are shown on live cards and enabled on staff selection.
 /* IRD Assistant v2.7.5 */
@@ -123,7 +183,7 @@ function parseDueInput(){
   return Number.isFinite(dt.getTime())?dt:null;
 }
 async function loadSettings(){
-  settings={...DEFAULTS,...await chrome.storage.sync.get(DEFAULTS)};
+  settings={...DEFAULTS,...await VercelStorage.sync.get(DEFAULTS)};
   $('createdBy').value=settings.staffName||"";
   $('timing').value=String(settings.defaultTiming||20);
   $('dueDate').value=localDateInputValue();
@@ -147,8 +207,8 @@ function updateDueFromTiming(){
   $('dueDate').value=localDateInputValue(due);
   $('dueTime').value=localTimeInputValue(due);
 }
-async function getPending(){const r=await chrome.runtime.sendMessage({type:'GET_PENDING'});return r?.ok?r.request:null;}
-async function getAlert(){const r=await chrome.runtime.sendMessage({type:'GET_ALERT'});return r?.ok?r.alert:null;}
+async function getPending(){const r=await VercelBackend.sendMessage({type:'GET_PENDING'});return r?.ok?r.request:null;}
+async function getAlert(){const r=await VercelBackend.sendMessage({type:'GET_ALERT'});return r?.ok?r.alert:null;}
 function showAlert(alert){
   if(!alert){$('alertBanner').className='alert hidden';$('alertBanner').innerHTML='';return;}
   $('alertBanner').className=`alert ${esc(alert.level||'due')}`;
@@ -267,7 +327,7 @@ function imageThumbsHtml(row, cls='task-images', source='images'){
   const shown=images.slice(0,4);
   return `<div class="${cls}">${shown.map((img,i)=>`<img class="${cls==='task-images'?'task-image-thumb':'completed-images'}" src="${esc(img.thumbnailUrl||img.viewUrl||'')}" data-image-url="${esc(img.viewUrl||img.thumbnailUrl||'')}" alt="${source==='remarkImages'?'Evidence':'Task'} image ${i+1}" title="Open image">`).join('')}${images.length>4?`<span class="task-image-more">+${images.length-4}</span>`:''}</div>`;
 }
-function openImageUrl(url){if(url) chrome.tabs.create({url});}
+function openImageUrl(url){if(url) VercelTabs.create({url});}
 
 async function saveRequest(e){
   e.preventDefault();
@@ -284,12 +344,12 @@ async function saveRequest(e){
   const startAt=new Date();
   const notification=getNotificationChoice();
   const requestObj={room,guestName,request,priority:$('priority').value,timing,dueAt,startAt:startAt.toISOString(),pic,notification,source:pending?.source||'',sourceChat:pending?.sourceChat||'',images:attachedImages.map(({name,mimeType,dataUrl})=>({name,mimeType,dataUrl}))};
-  const r=await chrome.runtime.sendMessage({type:'SAVE_REQUEST',request:requestObj});
+  const r=await VercelBackend.sendMessage({type:'SAVE_REQUEST',request:requestObj});
   btn.disabled=false;btn.textContent='▣ Save to Google Sheets';
   if(!r?.ok){err.textContent=r?.error||'Could not save request.';return;}
   $('requestForm').classList.add('hidden');$('savedState').classList.remove('hidden');
   $('savedState').innerHTML=`<div class="checkbig">✓</div><h3>Request Saved</h3><p><b>Room ${esc(room)}</b>${guestName?` • ${esc(guestName)}`:''}</p><p>${esc(requestObj.priority)} priority • Due: <b>${esc(r.data.dueAt||'')}</b></p><p>Saved to <b>${esc(settings.sheetName||'LIVE REQUESTS')}</b>.</p><div class="actions"><button id="newOne" class="secondary">New Request</button><button id="viewTasks" class="primary">View Tasks</button></div>`;
-  await chrome.runtime.sendMessage({type:'CLEAR_PENDING'});
+  await VercelBackend.sendMessage({type:'CLEAR_PENDING'});
   $('newOne').onclick=resetForm;$('viewTasks').onclick=()=>switchTab('tasks');
   // Refresh in the background; do not make the Save action wait for a second
   // Google Sheets round-trip.
@@ -313,7 +373,7 @@ function resetForm(){
   updateDueFromTiming();
 }
 async function startFreshNewRequest(){
-  await chrome.runtime.sendMessage({type:'CLEAR_PENDING'});
+  await VercelBackend.sendMessage({type:'CLEAR_PENDING'});
   resetForm();
 }
 function switchTab(name){
@@ -324,8 +384,8 @@ function switchTab(name){
   if(name==='completed') refreshCompleted();
 }
 document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>switchTab(b.dataset.tab));
-$('closeWindow').onclick=()=>window.close();$('cancel').onclick=resetForm;$('requestForm').addEventListener('submit',saveRequest);$('timing').addEventListener('change',updateDueFromTiming);$('refreshTasks').onclick=refreshTasks;$('refreshCompleted').onclick=refreshCompleted;$('openOptions').onclick=()=>chrome.runtime.openOptionsPage();
-$('openSheet').onclick=()=>{const id=normalizeSpreadsheetId(settings.spreadsheetId);if(id) chrome.tabs.create({url:`https://docs.google.com/spreadsheets/d/${encodeURIComponent(id)}/edit`});};
+$('closeWindow').onclick=()=>window.close();$('cancel').onclick=resetForm;$('requestForm').addEventListener('submit',saveRequest);$('timing').addEventListener('change',updateDueFromTiming);$('refreshTasks').onclick=refreshTasks;$('refreshCompleted').onclick=refreshCompleted;$('openOptions').onclick=()=>VercelBackend.openOptionsPage();
+$('openSheet').onclick=()=>{const id=normalizeSpreadsheetId(settings.spreadsheetId);if(id) VercelTabs.create({url:`https://docs.google.com/spreadsheets/d/${encodeURIComponent(id)}/edit`});};
 function classifyRow(row){
   const dueMs=Date.parse(row.dueIso||"");
   if(!Number.isFinite(dueMs)) return {state:'INVALID',label:'TIME ERROR',detail:'Time unavailable',remainingMs:NaN};
@@ -472,7 +532,7 @@ function updateLiveTaskDisplay(){
 }
 
 async function refreshTasks(){
-  const r=await chrome.runtime.sendMessage({type:'LIST_LIVE'});
+  const r=await VercelBackend.sendMessage({type:'LIST_LIVE'});
   if(!r?.ok){$('tasks').innerHTML=`<div class="error">${esc(r?.error||'Failed to load live requests.')}</div>`;$('taskCount').textContent='0';return;}
   liveRows=r.data.rows||[];renderTasks();
 }
@@ -482,19 +542,19 @@ function completedDateKeyNow(){
 }
 async function loadCompletedCache(dateKey=completedDateKeyNow()){
   try {
-    const stored=await chrome.storage.local.get({[COMPLETED_CACHE_KEY]:{}});
+    const stored=await VercelStorage.local.get({[COMPLETED_CACHE_KEY]:{}});
     const all=stored[COMPLETED_CACHE_KEY]||{};
     return Array.isArray(all[dateKey]) ? all[dateKey] : [];
   } catch (_) { return []; }
 }
 async function saveCompletedCache(dateKey, rows){
   try {
-    const stored=await chrome.storage.local.get({[COMPLETED_CACHE_KEY]:{}});
+    const stored=await VercelStorage.local.get({[COMPLETED_CACHE_KEY]:{}});
     const all=stored[COMPLETED_CACHE_KEY]||{};
     all[dateKey]=Array.isArray(rows)?rows:[];
     // Keep only today's local cache. Google Sheets remains the permanent archive.
     Object.keys(all).forEach(k=>{if(k!==dateKey) delete all[k];});
-    await chrome.storage.local.set({[COMPLETED_CACHE_KEY]:all});
+    await VercelStorage.local.set({[COMPLETED_CACHE_KEY]:all});
   } catch (_) {}
 }
 
@@ -544,7 +604,7 @@ async function refreshCompleted(){
     renderCompleted();
   }
 
-  const r=await chrome.runtime.sendMessage({type:'LIST_TODAY_HISTORY', clientDateKey:currentKey});
+  const r=await VercelBackend.sendMessage({type:'LIST_TODAY_HISTORY', clientDateKey:currentKey});
   if(!r?.ok){
     // Keep the local same-day cache only as an offline fallback.
     lastCompletedRefreshAt=Date.now();
@@ -626,7 +686,7 @@ async function confirmCompletion(){
   liveRows=liveRows.filter(row=>String(row.id)!==requestId);
   completedRows=[optimistic,...completedRows.filter(row=>String(row.id)!==requestId)];
   void saveCompletedCache(completedDateKeyNow(),completedRows);renderTasks();renderCompleted();
-  const r=await chrome.runtime.sendMessage({type:'COMPLETE_REQUEST',requestId,doneBy:staff,completionStatus:mode==='pending'?'Completed with Pending':'',remark,remarkImages,clientDateKey:completedDateKeyNow(),clientTime:localTimeInputValue()});
+  const r=await VercelBackend.sendMessage({type:'COMPLETE_REQUEST',requestId,doneBy:staff,completionStatus:mode==='pending'?'Completed with Pending':'',remark,remarkImages,clientDateKey:completedDateKeyNow(),clientTime:localTimeInputValue()});
   if(!r?.ok){
     completedRows=completedRows.filter(row=>String(row.id)!==requestId);void saveCompletedCache(completedDateKeyNow(),completedRows);
     liveRows=[sourceRow,...liveRows.filter(row=>String(row.id)!==requestId)];renderTasks();renderCompleted();alert(r?.error||'Could not complete request.');return;
@@ -664,7 +724,7 @@ $('tasks').addEventListener('click',async e=>{
       workflowAction.disabled=true;workflowAction.textContent='Saving…';
       message={type:'HANDOVER_REQUEST',requestId,toStaff:target.trim(),staffName:staff,note:'Handover from '+staff+' to '+target.trim()};
     }
-    try{const result=await chrome.runtime.sendMessage(message);if(!result?.ok)throw new Error(result?.error||'Action failed');await refreshTasks();alert(workflowAction.classList.contains('ack')?'Task acknowledged.':'Task handed over successfully.');}
+    try{const result=await VercelBackend.sendMessage(message);if(!result?.ok)throw new Error(result?.error||'Action failed');await refreshTasks();alert(workflowAction.classList.contains('ack')?'Task acknowledged.':'Task handed over successfully.');}
     catch(err){alert(err.message||'Could not update task.');}
     finally{if(document.body.contains(workflowAction)){workflowAction.disabled=false;workflowAction.textContent=workflowAction.classList.contains('ack')?'✋ Ack':'↔ Handover';}}
     return;
@@ -680,7 +740,7 @@ document.querySelectorAll('.completion-option').forEach(option=>option.addEventL
 $('closeRemark').onclick=closeCompletionModal;$('cancelRemark').onclick=closeCompletionModal;$('confirmDone').onclick=confirmCompletion;
 $('remarkModal').addEventListener('click',e=>{if(e.target===$('remarkModal'))closeCompletionModal();});
 
-chrome.runtime.onMessage.addListener(msg=>{
+VercelBackend.onMessage.addListener(msg=>{
   if(msg?.type==='NEW_REQUEST') startFreshNewRequest();
   if(msg?.type==='PREFILL_REQUEST') populate(msg.request||{});
   if(msg?.type==='TASK_ALERT'){showAlert(msg.alert);switchTab('tasks');refreshTasks();}
@@ -708,7 +768,7 @@ async function boot(){
   // it was explicitly opened from a WhatsApp message with pendingRequest.
   const p=await getPending();
   if(p) populate(p); else resetForm();
-  const alert=await getAlert();if(alert){showAlert(alert);switchTab('tasks');await chrome.runtime.sendMessage({type:'CLEAR_ALERT'});}
+  const alert=await getAlert();if(alert){showAlert(alert);switchTab('tasks');await VercelBackend.sendMessage({type:'CLEAR_ALERT'});}
   completedRows=await loadCompletedCache(completedDateKeyNow());
   renderCompleted();
   await Promise.all([refreshTasks(), refreshCompleted()]);
@@ -733,7 +793,7 @@ async function realtimeSyncTick(){
     // the fresh rows, so we do not immediately perform a second LIST_LIVE read.
     // The local snapshot is evaluated for DUE SOON / DUE NOW / OVERDUE on the
     // same foreground cycle.
-    const r=await chrome.runtime.sendMessage({type:'SYNC_NOW'});
+    const r=await VercelBackend.sendMessage({type:'SYNC_NOW'});
     if(r?.ok && Array.isArray(r.rows)){
       liveRows=r.rows;
       if(activeTab==='tasks') renderTasks();
@@ -782,89 +842,3 @@ async function realtimeSyncTick(){
 }
 realtimeSyncTick();
 setInterval(realtimeSyncTick,1000);
-
-
-
-// --- ADVANCED VERCEL BACKEND POLYFILL ---
-chrome.runtime.sendMessage = async function(message, callback) {
-    const getSettings = () => new Promise(res => chrome.storage.sync.get(['endpointUrl', 'spreadsheetId', 'sheetName', 'historySheetName', 'staffName', 'computerName', 'reminderMinutes'], res));
-    const s = await getSettings();
-    
-    // 1. Notification & Audio Handling for Web
-    if (message.type === 'TEST_NOTIFICATION') {
-        let soundOk = false;
-        if (message.withSound) {
-            try { 
-                const audio = new Audio('order_overdue_alarm.wav');
-                await audio.play();
-                soundOk = true; 
-            } catch(e){ console.warn("Audio blocked by browser:", e); }
-        }
-        
-        // Request Web Notification permission
-        if (Notification.permission !== 'granted' && Notification.permission !== 'denied') {
-            await Notification.requestPermission();
-        }
-        if (Notification.permission === 'granted') {
-            new Notification("IRD Assistant", {body: "Test Banner Berhasil!", icon: "icon48.png"});
-        }
-        
-        const res = {ok: true, sound: soundOk, message: "Tested"};
-        if(callback) callback(res);
-        return res;
-    }
-    
-    if (message.action === 'playAlarm' || message.type === 'PLAY_ALARM') {
-        try { new Audio('order_overdue_alarm.wav').play(); } catch(e){}
-        return {ok: true};
-    }
-
-    // 2. Local State Handling (Vercel uses localStorage)
-    if (message.type === 'GET_PENDING') {
-        const p = localStorage.getItem('pendingRequest');
-        return p ? {ok: true, request: JSON.parse(p)} : {ok: false};
-    }
-    if (message.type === 'CLEAR_PENDING') {
-        localStorage.removeItem('pendingRequest');
-        return {ok: true};
-    }
-    if (message.type === 'GET_ALERT' || message.type === 'CLEAR_ALERT') {
-        return {ok: true, alert: null};
-    }
-    if (message.type === 'EVALUATE_LOCAL_NOTIFICATIONS') {
-        return {ok: true}; // Now handled natively inside realtimeSyncTick
-    }
-
-    // 3. API Routing to Google Apps Script
-    if (!s.endpointUrl) return {ok: false, error: "Web App URL belum diisi di Settings."};
-    if (!s.spreadsheetId) return {ok: false, error: "Spreadsheet ID belum diisi di Settings."};
-    
-    let payload = { spreadsheetId: s.spreadsheetId };
-    
-    switch (message.type) {
-        case 'TEST_CONNECTION': payload.action = 'testConnection'; break;
-        case 'SAVE_REQUEST': payload.action = 'createRequest'; payload.request = message.request; payload.staffName = s.staffName; payload.computerName = s.computerName; break;
-        case 'LIST_LIVE': 
-        case 'SYNC_NOW': payload.action = 'listLive'; payload.sheetName = s.sheetName || 'LIVE REQUESTS'; payload.reminderMinutes = s.reminderMinutes || 5; break;
-        case 'LIST_TODAY_HISTORY': payload.action = 'listTodayHistory'; payload.historySheetName = s.historySheetName || 'HISTORY'; payload.clientDateKey = message.clientDateKey; break;
-        case 'ACKNOWLEDGE_REQUEST': payload.action = 'acknowledgeRequest'; Object.assign(payload, message); break;
-        case 'HANDOVER_REQUEST': payload.action = 'handoverRequest'; Object.assign(payload, message); break;
-        case 'COMPLETE_REQUEST': payload.action = 'completeRequest'; Object.assign(payload, message); break;
-        default: return {ok: false, error: "Unknown action: " + message.type};
-    }
-    
-    try {
-        const response = await fetch(s.endpointUrl, {
-            method: "POST",
-            body: JSON.stringify(payload),
-            headers: { "Content-Type": "text/plain" }
-        });
-        const data = await response.json();
-        if (callback) callback(data);
-        return data;
-    } catch (e) {
-        const err = {ok: false, error: "Network Error: Pastikan URL Web App benar dan di-deploy Anyone/Me. (" + e.message + ")"};
-        if (callback) callback(err);
-        return err;
-    }
-};
