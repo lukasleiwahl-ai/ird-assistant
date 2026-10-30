@@ -38,3 +38,10 @@ The Apps Script backend returns response objects directly, for example `{ok:true
 4. Complete on Computer A with a remark and evidence image; verify the HISTORY row, remark, and image references on Computer B.
 5. Refresh Completed History on both computers and compare the records.
 6. Test banner and sound permissions separately on each computer.
+
+## Permanent footer status fix (30 October 2026)
+- Root cause confirmed: the native `VercelStorageHandler.get()` implementation supported the callback form only and returned `undefined`. However, `assistant.js` used `await VercelStorage.sync.get(DEFAULTS)`. As a result, the main application merged `DEFAULTS` with `undefined`, so the footer always displayed `Google Sheets not configured` even though the Settings page had saved values and `VercelBackend.sendMessage()` could read them through its callback wrapper.
+- Fixed `get()` to return a resolved Promise containing the retrieved values while retaining the existing asynchronous callback behavior. This fixes both `loadSettings()` and the completed-history local cache reads that also use `await`.
+- Added a shared footer-status renderer and a settings snapshot refresh when the app is restored (`pageshow`), focused, or receives a same-origin `localStorage` update (`storage`). No Apps Script or Google Sheets schema changes were made.
+- Validation: `node --check` passed for `assistant.js`, `options.js`, `popup.js`, and a `.js` copy of Apps Script `Code.gs`. A runtime unit check confirmed both Promise-based and callback-based storage reads return the saved endpoint and Spreadsheet ID. ZIP integrity checked after packaging.
+- Live Vercel deployment and multi-computer behavior still require acceptance testing in the user's environment; this change specifically fixes local settings retrieval and footer status refresh.

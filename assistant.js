@@ -26,6 +26,10 @@ window.VercelStorageHandler = {
             });
         }
         if (callback) setTimeout(() => callback(result), 0);
+        // Support both the legacy callback API and modern async/await callers.
+        // The previous implementation returned undefined, so `await get()`
+        // resolved immediately and silently discarded the saved settings.
+        return Promise.resolve(result);
     },
     set: function(data, callback) {
         Object.keys(data).forEach(k => {
@@ -208,17 +212,29 @@ function parseDueInput(){
   const dt=new Date(y,m-1,d,hh,mm,0,0);
   return Number.isFinite(dt.getTime())?dt:null;
 }
+function updateConnectionIndicator(){
+  const hasEndpoint=Boolean(String(settings.endpointUrl||'').trim());
+  const hasSpreadsheet=Boolean(normalizeSpreadsheetId(settings.spreadsheetId));
+  const configured=hasEndpoint&&hasSpreadsheet;
+  $('connectionDot').className='dot '+(configured?'ok':'bad');
+  $('connectionText').textContent=configured?'Google Sheets connected':'Google Sheets not configured';
+}
+
+async function refreshSettingsSnapshot(){
+  const stored=await VercelStorage.sync.get(DEFAULTS);
+  settings={...DEFAULTS,...(stored||{})};
+  $('computerText').textContent=settings.computerName||"";
+  updateConnectionIndicator();
+  return settings;
+}
+
 async function loadSettings(){
-  settings={...DEFAULTS,...await VercelStorage.sync.get(DEFAULTS)};
+  await refreshSettingsSnapshot();
   $('createdBy').value=settings.staffName||"";
   $('timing').value=String(settings.defaultTiming||20);
   $('dueDate').value=localDateInputValue();
   populatePics();
   updateDueFromTiming();
-  $('computerText').textContent=settings.computerName||"";
-  const connected=Boolean(settings.endpointUrl&&normalizeSpreadsheetId(settings.spreadsheetId));
-  $('connectionDot').className='dot '+(connected?'ok':'bad');
-  $('connectionText').textContent=connected?'Google Sheets connected':'Google Sheets not configured';
 }
 function populatePics(){
   const names=String(settings.staffList||"").split(",").map(s=>s.trim()).filter(Boolean);
@@ -802,6 +818,25 @@ async function boot(){
   realtimeSyncTick();
   window.setInterval(realtimeSyncTick, Math.max(5, Number(settings.syncIntervalSeconds) || 10) * 1000);
 }
+
+// Settings are stored in this browser's localStorage by options.html. When the
+// app is restored from the back/forward cache, refocused, or updated by another
+// same-origin page, refresh the snapshot so the footer cannot remain stale.
+let connectionRefreshInProgress=false;
+async function refreshConnectionStatus(){
+  if(connectionRefreshInProgress) return;
+  connectionRefreshInProgress=true;
+  try { await refreshSettingsSnapshot(); }
+  catch(error) { console.warn('Could not refresh local settings snapshot:', error); }
+  finally { connectionRefreshInProgress=false; }
+}
+window.addEventListener('pageshow', () => { refreshConnectionStatus(); });
+window.addEventListener('focus', () => { refreshConnectionStatus(); });
+window.addEventListener('storage', event => {
+  const relevantKeys=['endpointUrl','spreadsheetId','sheetName','historySheetName','staffName','staffList','computerName','defaultTiming','reminderMinutes','syncIntervalSeconds'];
+  if(event.key===null || relevantKeys.includes(event.key)) refreshConnectionStatus();
+});
+
 boot();
 setInterval(()=>{
   updateLiveTaskDisplay();
