@@ -1,9 +1,11 @@
 {
   "name": "ird-assistant-pwa",
-  "version": "2.7.9.4",
+  "version": "2.7.9.5",
   "private": true,
-  "description": "IRD Assistant PWA frontend and Web Push delivery endpoint",
-  "engines": { "node": ">=20" },
+  "description": "IRD Assistant PWA with server-synced WIB clock, broadcast internal notifications, and shared task discussion",
+  "engines": {
+    "node": ">=20"
+  },
   "dependencies": {
     "web-push": "^3.6.7"
   }

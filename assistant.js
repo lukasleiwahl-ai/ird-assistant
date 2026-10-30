@@ -58,6 +58,23 @@ window.VercelTabs = {
     create: function(opt) { window.open(opt.url, '_blank'); }
 };
 
+// Server-aligned clock: all operational timestamps/countdowns use the Apps Script clock.
+let serverClockOffsetMs = 0;
+let serverClockSynchronized = false;
+function appNowMs(){ return Date.now() + (serverClockSynchronized ? serverClockOffsetMs : 0); }
+function appNow(){ return new Date(appNowMs()); }
+function updateServerClock(serverNow, requestStartedAt, responseReceivedAt){
+    const serverMs = Date.parse(serverNow || '');
+    if (!Number.isFinite(serverMs)) return;
+    const sent = Number.isFinite(requestStartedAt) ? requestStartedAt : Date.now();
+    const received = Number.isFinite(responseReceivedAt) ? responseReceivedAt : Date.now();
+    const midpoint = sent + Math.max(0, received - sent) / 2;
+    const nextOffset = serverMs - midpoint;
+    // Smooth small network jitter; accept large offsets because device clocks can be wrong.
+    serverClockOffsetMs = serverClockSynchronized ? (serverClockOffsetMs * 0.25 + nextOffset * 0.75) : nextOffset;
+    serverClockSynchronized = true;
+}
+
 window.VercelBackend = {
     openOptionsPage: function() { window.location.href = 'options.html'; },
     onMessage: {
@@ -145,12 +162,17 @@ window.VercelBackend = {
             case 'ACKNOWLEDGE_REQUEST': payload.action = 'acknowledgeRequest'; Object.assign(payload, message); break;
             case 'HANDOVER_REQUEST': payload.action = 'handoverRequest'; Object.assign(payload, message); break;
             case 'COMPLETE_REQUEST': payload.action = 'completeRequest'; Object.assign(payload, message); break;
+            case 'LIST_NOTIFICATIONS': payload.action = 'listNotifications'; Object.assign(payload, message); break;
+            case 'MARK_NOTIFICATION_READ': payload.action = 'markNotificationRead'; Object.assign(payload, message); break;
+            case 'LIST_TASK_REPLIES': payload.action = 'listTaskReplies'; Object.assign(payload, message); break;
+            case 'POST_TASK_REPLY': payload.action = 'postTaskReply'; Object.assign(payload, message); break;
             default: return {ok: false, error: "Unknown action: " + message.type};
         }
         
         try {
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 15000);
+            const requestStartedAt = Date.now();
             let response;
             let raw;
             try {
@@ -169,6 +191,7 @@ window.VercelBackend = {
             try { data = JSON.parse(raw); }
             catch (_) { throw new Error("Backend returned an invalid response. Check the Apps Script deployment and execution log."); }
             if (!response.ok) throw new Error("HTTP " + response.status + ": " + (data.error || response.statusText || "Request failed"));
+            if (data && data.serverNow) updateServerClock(data.serverNow, requestStartedAt, Date.now());
             if (callback) callback(data);
             return data;
         } catch (e) {
@@ -181,6 +204,7 @@ window.VercelBackend = {
 };
 // --- END VERCEL NATIVE BACKEND ---
 
+// v2.7.9.5 WIB server clock + internal notifications + task discussion; preserves v2.7.9.4 UI/features.
 // v2.7.9.3 desktop Ack/Handover: controls are shown on live cards and enabled on staff selection.
 /* IRD Assistant v2.7.5 */
 const $ = id => document.getElementById(id);
@@ -215,7 +239,7 @@ function normalizeSpreadsheetId(value){
   return m?m[1]:v.replace(/[?#].*$/i,"").replace(/\/edit.*$/i,"").trim();
 }
 const IRD_TIME_ZONE = 'Asia/Jakarta';
-function jakartaDateTimeParts(date = new Date()){
+function jakartaDateTimeParts(date = appNow()){
   try {
     const parts=new Intl.DateTimeFormat('en-GB',{
       timeZone:IRD_TIME_ZONE,year:'numeric',month:'2-digit',day:'2-digit',
@@ -235,11 +259,11 @@ function jakartaDateTimeParts(date = new Date()){
     minute:String(shifted.getUTCMinutes()).padStart(2,'0')
   };
 }
-function localDateInputValue(date = new Date()){
+function localDateInputValue(date = appNow()){
   const p=jakartaDateTimeParts(date);
   return `${p.year}-${p.month}-${p.day}`;
 }
-function localTimeInputValue(date = new Date()){
+function localTimeInputValue(date = appNow()){
   const p=jakartaDateTimeParts(date);
   return `${p.hour}:${p.minute}`;
 }
@@ -295,7 +319,7 @@ function populatePics(){
 function updateDueFromTiming(){
   const mins=Math.min(60,Math.max(5,Number($('timing').value)||20));
   $('timing').value=String(mins);
-  const due=new Date(Date.now()+mins*60000);
+  const due=new Date(appNowMs()+mins*60000);
   $('dueDate').value=localDateInputValue(due);
   $('dueTime').value=localTimeInputValue(due);
 }
@@ -335,7 +359,7 @@ async function showDeviceNotification(title,body,tag,requestId){
 }
 
 function evaluateDueNotifications(rows){
-  const now=Date.now();
+  const now=appNowMs();
   const reminderMs=Math.max(0,Number(settings.reminderMinutes)||0)*60000;
   const active=[];
   (Array.isArray(rows)?rows:[]).forEach(row=>{
@@ -518,9 +542,10 @@ async function saveRequest(e){
   if(!pic){err.textContent='Please select a PIC.';return;}
   if(!$('track').checked){err.textContent='Enable Google Sheets tracking to save this request.';return;}
   const btn=$('save');btn.disabled=true;btn.textContent='Saving…';
-  const startAt=new Date();
   const notification=getNotificationChoice();
-  const requestObj={room,guestName,request,priority:$('priority').value,timing,dueAt,startAt:startAt.toISOString(),pic,notification,source:pending?.source||'',sourceChat:pending?.sourceChat||'',images:attachedImages.map(({name,mimeType,dataUrl})=>({name,mimeType,dataUrl}))};
+  // Send the user's selected Jakarta wall-clock fields; the backend creates the
+  // authoritative start timestamp and reconstructs Due Time as Asia/Jakarta.
+  const requestObj={room,guestName,request,priority:$('priority').value,timing,dueDate:$('dueDate').value,dueTime:$('dueTime').value,pic,notification,source:pending?.source||'',sourceChat:pending?.sourceChat||'',images:attachedImages.map(({name,mimeType,dataUrl})=>({name,mimeType,dataUrl}))};
   const r=await VercelBackend.sendMessage({type:'SAVE_REQUEST',request:requestObj});
   btn.disabled=false;btn.textContent='▣ Save to Google Sheets';
   if(!r?.ok){err.textContent=r?.error||'Could not save request.';return;}
@@ -566,7 +591,7 @@ $('openSheet').onclick=()=>{const id=normalizeSpreadsheetId(settings.spreadsheet
 function classifyRow(row){
   const dueMs=Date.parse(row.dueIso||"");
   if(!Number.isFinite(dueMs)) return {state:'INVALID',label:'TIME ERROR',detail:'Time unavailable',remainingMs:NaN};
-  const diff=dueMs-Date.now();
+  const diff=dueMs-appNowMs();
   if(diff>0){
     const reminderMs=Math.max(0,Number(settings.reminderMinutes||5))*60000;
     if(reminderMs>0 && diff<=reminderMs) return {state:'SOON',label:'DUE SOON',detail:`Due in ${Math.max(1,Math.ceil(diff/60000))} min`,remainingMs:diff};
@@ -613,7 +638,7 @@ function buildTaskCard(row){
   const card=document.createElement('article');
   card.className='task-card';
   card.dataset.id=String(row.id);
-  card.innerHTML=`<div class="task-top"><div class="room"></div><span class="priority"></span><span class="status hidden"></span></div><div class="req"></div><div class="task-image-slot"></div><div class="meta hidden">SLA <span class="sla"></span> min • Due <span class="due-at-legacy"></span> • <span class="countdown-legacy"></span> • PIC <span class="pic-legacy"></span></div><div class="ack-strip"><span class="ack-state"></span><span class="pic"></span></div><div class="due-strip"><span class="countdown"></span><span class="due-at"></span></div><div class="task-actions"><label class="done-by-wrap"><span>Done by :</span><select class="done-by" data-id="${esc(row.id)}"></select></label><div class="done-buttons"><button class="ack" data-id="${esc(row.id)}">✋ Ack</button><button class="handover" data-id="${esc(row.id)}">↔ Handover</button><button class="remark" data-id="${esc(row.id)}" hidden>💬 Remark</button><button class="done" data-id="${esc(row.id)}">✓ Done</button></div></div>`;
+  card.innerHTML=`<div class="task-top"><div class="room"></div><span class="priority"></span><span class="status hidden"></span></div><div class="req"></div><div class="task-image-slot"></div><div class="meta hidden">SLA <span class="sla"></span> min • Due <span class="due-at-legacy"></span> • <span class="countdown-legacy"></span> • PIC <span class="pic-legacy"></span></div><div class="ack-strip"><span class="ack-state"></span><span class="pic"></span></div><div class="due-strip"><span class="countdown"></span><span class="due-at"></span></div><div class="task-actions"><label class="done-by-wrap"><span>Done by :</span><select class="done-by" data-id="${esc(row.id)}"></select></label><div class="done-buttons"><button class="ack" data-id="${esc(row.id)}">✋ Ack</button><button class="handover" data-id="${esc(row.id)}">↔ Handover</button><button class="remark" data-id="${esc(row.id)}" hidden>💬 Remark</button><button class="reply" data-id="${esc(row.id)}">💬 Reply</button><button class="done" data-id="${esc(row.id)}">✓ Done</button></div></div>`;
   const select=card.querySelector('.done-by');
   const selected=doneBySelections.get(String(row.id))||settings.staffName||String(row.pic||'').trim();
   select.innerHTML=doneByOptions(selected);
@@ -715,7 +740,7 @@ async function refreshTasks(){
 }
 
 function completedDateKeyNow(){
-  return localDateInputValue(new Date());
+  return localDateInputValue(appNow());
 }
 async function loadCompletedCache(dateKey=completedDateKeyNow()){
   try {
@@ -750,7 +775,7 @@ function completedCardHtml(row){
   const time=esc(formatCompletedTime(row));
   const date=esc(row.completedDate||row.date||'');
   const remark=String(row.remark||row.remarks||'').trim();
-  return `<article class="completed-card"><div class="completed-top"><span class="completed-check">✓</span><div><div class="completed-room">Room ${room}</div>${guest?`<div class="completed-guest">${guest}</div>`:''}</div><span class="completed-time">${time}</span></div><div class="completed-request">${task?`<b>${task}</b> • `:''}${request}</div>${imageThumbsHtml(row,'completed-images','images')}${remark?`<div class="remark-preview"><b>Remark:</b> ${esc(remark)}</div>`:''}${remarkImageRefsFromRow(row).length?`<div class="remark-evidence-preview"><b>Evidence:</b>${imageThumbsHtml(row,'completed-images','remarkImages')}</div>`:''}<div class="completed-meta"><span>Done by <b>${doneBy}</b></span>${duration!==''?`<span>Duration <b>${esc(duration)} min</b></span>`:''}<span class="${status.toLowerCase().includes('pending')?'pending-status':''}">${status}</span>${date?`<span>${date}</span>`:''}</div></article>`;
+  return `<article class="completed-card" data-id="${esc(row.id||'')}"><div class="completed-top"><span class="completed-check">✓</span><div><div class="completed-room">Room ${room}</div>${guest?`<div class="completed-guest">${guest}</div>`:''}</div><span class="completed-time">${time}</span></div><div class="completed-request">${task?`<b>${task}</b> • `:''}${request}</div>${imageThumbsHtml(row,'completed-images','images')}${remark?`<div class="remark-preview"><b>Remark:</b> ${esc(remark)}</div>`:''}${remarkImageRefsFromRow(row).length?`<div class="remark-evidence-preview"><b>Evidence:</b>${imageThumbsHtml(row,'completed-images','remarkImages')}</div>`:''}<div class="completed-meta"><span>Done by <b>${doneBy}</b></span>${duration!==''?`<span>Duration <b>${esc(duration)} min</b></span>`:''}<span class="${status.toLowerCase().includes('pending')?'pending-status':''}">${status}</span>${date?`<span>${date}</span>`:''}</div><div class="completed-actions"><button type="button" class="secondary small-btn reply" data-id="${esc(row.id||'')}">💬 Reply / Discussion</button></div></article>`;
 }
 
 function renderCompleted(){
@@ -807,6 +832,113 @@ async function refreshCompleted(){
   lastCompletedRefreshAt=Date.now();
   renderCompleted();
 }
+// --- Internal Notifications (broadcast to every configured IRD Assistant user) ---
+let notificationRows = [];
+let notificationFeedInitialized = false;
+let knownNotificationIds = new Set();
+let activeDiscussion = null;
+let discussionRefreshBusy = false;
+let deviceIdentityPromise = null;
+
+async function getAppIdentity(){
+  const displayName = String(settings.staffName || settings.computerName || 'IRD User').trim();
+  if(settings.staffName && String(settings.staffName).trim()){
+    const key='staff:'+String(settings.staffName).trim().toLowerCase().replace(/\s+/g,' ');
+    return {readerKey:key,readerName:displayName};
+  }
+  if(!deviceIdentityPromise){
+    deviceIdentityPromise=(async()=>{
+      let id='';
+      try{id=localStorage.getItem('irdAssistantDeviceId')||'';}catch(_){}
+      if(!id){id=(window.crypto&&crypto.randomUUID)?crypto.randomUUID():'device-'+Math.random().toString(36).slice(2)+Date.now().toString(36);try{localStorage.setItem('irdAssistantDeviceId',id);}catch(_){}}
+      return {readerKey:'device:'+id,readerName:displayName};
+    })();
+  }
+  return deviceIdentityPromise;
+}
+function renderNotifications(){
+  const list=$('notificationList'); if(!list) return;
+  const unread=notificationRows.filter(x=>!x.isRead).length;
+  const badge=$('notificationBadge');
+  if(badge){badge.textContent=unread>99?'99+':String(unread);badge.classList.toggle('hidden',unread===0);}
+  if(!notificationRows.length){list.innerHTML='<div class="notification-empty">No notifications yet.</div>';return;}
+  list.innerHTML=notificationRows.map(item=>`<button type="button" class="notification-item ${item.isRead?'read':'unread'}" data-notification-id="${esc(item.id)}" data-task-id="${esc(item.taskId)}"><span class="notification-item-icon">✓</span><span class="notification-item-copy"><b>${esc(item.title||'Task Completed')}</b><span>${esc(item.message||'A task has been completed.')}</span><small>${esc(item.room?'Room '+item.room:'')} • ${esc(item.createdAtLabel||'')}</small></span>${item.isRead?'':'<i class="notification-unread-dot"></i>'}</button>`).join('');
+}
+async function refreshNotifications(showNew=false){
+  const identity=await getAppIdentity();
+  const result=await VercelBackend.sendMessage({type:'LIST_NOTIFICATIONS',readerKey:identity.readerKey,readerName:identity.readerName});
+  if(!result?.ok) return;
+  const rows=Array.isArray(result.rows)?result.rows:[];
+  if(showNew && notificationFeedInitialized){
+    rows.forEach(item=>{
+      const id=String(item.id||'');
+      if(id && !knownNotificationIds.has(id) && typeof Notification!=='undefined' && Notification.permission==='granted'){
+        void showDeviceNotification(item.title||'IRD Assistant — Task Completed',item.message||'A task has been completed.',`ird-task-completed-${id}`,item.taskId||id);
+      }
+    });
+  }
+  knownNotificationIds=new Set(rows.map(x=>String(x.id||'')));
+  notificationRows=rows;
+  notificationFeedInitialized=true;
+  renderNotifications();
+}
+async function markNotificationRead(notificationId){
+  const identity=await getAppIdentity();
+  const r=await VercelBackend.sendMessage({type:'MARK_NOTIFICATION_READ',notificationId,readerKey:identity.readerKey,readerName:identity.readerName});
+  if(r?.ok){const item=notificationRows.find(x=>String(x.id)===String(notificationId));if(item)item.isRead=true;renderNotifications();}
+}
+async function openNotifications(){
+  $('notificationModal').classList.remove('hidden');
+  await refreshNotifications(false);
+}
+function closeNotifications(){$('notificationModal').classList.add('hidden');}
+
+// --- Shared Task Reply / Discussion ---
+function discussionSenderName(){return String(settings.staffName||settings.computerName||'IRD User').trim()||'IRD User';}
+function renderDiscussion(rows){
+  const list=$('discussionMessages');
+  if(!Array.isArray(rows)||!rows.length){list.innerHTML='<div class="discussion-empty">No replies yet. Start the discussion for this task.</div>';return;}
+  list.innerHTML=rows.map(row=>{const own=String(row.senderName||'')===discussionSenderName();return `<div class="discussion-message ${own?'own':''}"><b>${esc(row.senderName||'IRD User')}</b><p>${esc(row.message||'')}</p><small>${esc(row.createdAtLabel||'')}</small></div>`;}).join('');
+  list.scrollTop=list.scrollHeight;
+}
+async function refreshDiscussion(){
+  if(!activeDiscussion||discussionRefreshBusy)return;
+  discussionRefreshBusy=true;
+  try{const r=await VercelBackend.sendMessage({type:'LIST_TASK_REPLIES',taskId:activeDiscussion.taskId});if(r?.ok)renderDiscussion(r.rows||[]);else $('discussionMessages').innerHTML=`<div class="completed-error">${esc(r?.error||'Could not load discussion.')}</div>`;}
+  finally{discussionRefreshBusy=false;}
+}
+async function openDiscussion(taskId,room,requestText){
+  if(!taskId)return;
+  activeDiscussion={taskId:String(taskId),room:String(room||''),request:String(requestText||'')};
+  $('discussionTitle').textContent=`Room ${activeDiscussion.room||'-'} • Task Discussion`;$('discussionSubtitle').textContent=activeDiscussion.request;
+  $('discussionInput').value='';$('discussionError').textContent='';$('discussionModal').classList.remove('hidden');
+  await refreshDiscussion();$('discussionInput').focus();
+}
+function closeDiscussion(){activeDiscussion=null;$('discussionModal').classList.add('hidden');}
+async function sendDiscussionReply(){
+  if(!activeDiscussion)return;
+  const message=String($('discussionInput').value||'').trim();
+  if(!message){$('discussionError').textContent='Please enter a reply.';return;}
+  const button=$('sendDiscussionReply');button.disabled=true;button.textContent='Sending…';$('discussionError').textContent='';
+  const r=await VercelBackend.sendMessage({type:'POST_TASK_REPLY',taskId:activeDiscussion.taskId,room:activeDiscussion.room,senderName:discussionSenderName(),message});
+  button.disabled=false;button.textContent='Send Reply';
+  if(!r?.ok){$('discussionError').textContent=r?.error||'Could not send reply.';return;}
+  $('discussionInput').value='';await refreshDiscussion();
+}
+$('notificationBell').addEventListener('click',openNotifications);
+$('closeNotifications').addEventListener('click',closeNotifications);
+$('notificationModal').addEventListener('click',e=>{if(e.target===$('notificationModal'))closeNotifications();});
+$('notificationList').addEventListener('click',async e=>{
+  const item=e.target.closest('.notification-item');if(!item)return;
+  const id=item.dataset.notificationId,taskId=item.dataset.taskId;
+  await markNotificationRead(id);closeNotifications();
+  switchTab('completed');
+  setTimeout(()=>{const card=Array.from(document.querySelectorAll('.completed-card')).find(x=>String(x.dataset.id)===String(taskId));if(card){card.scrollIntoView({behavior:'smooth',block:'center'});card.classList.add('notification-highlight');setTimeout(()=>card.classList.remove('notification-highlight'),1800);}},250);
+});
+$('discussionClose').addEventListener('click',closeDiscussion);$('discussionCancel').addEventListener('click',closeDiscussion);$('sendDiscussionReply').addEventListener('click',sendDiscussionReply);
+$('discussionModal').addEventListener('click',e=>{if(e.target===$('discussionModal'))closeDiscussion();});
+$('discussionInput').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendDiscussionReply();}});
+
 document.querySelectorAll('.notification-option').forEach(option=>{
   option.addEventListener('click',()=>setNotificationChoice(option.dataset.value));
 });
@@ -856,7 +988,7 @@ async function confirmCompletion(){
   const card=document.querySelector(`.task-card[data-id="${CSS.escape(requestId)}"]`);
   const done=card?.querySelector('.done');
   const optimisticStatus=mode==='pending'?'Completed with Pending':'COMPLETED';
-  const optimistic={id:requestId,room:sourceRow.room,guestName:sourceRow.guestName,request:sourceRow.request,task:sourceRow.task||'',doneBy:staff,completedTime:localTimeInputValue(),completedDate:completedDateKeyNow(),date:completedDateKeyNow(),duration:sourceRow.startIso?Math.max(0,Math.round((Date.now()-Date.parse(sourceRow.startIso))/60000)):'',status:optimisticStatus,remark,images:imageRefsFromRow(sourceRow),remarkImages:remarkImages.map((x,i)=>({name:x.name,thumbnailUrl:x.dataUrl,viewUrl:x.dataUrl}))};
+  const optimistic={id:requestId,room:sourceRow.room,guestName:sourceRow.guestName,request:sourceRow.request,task:sourceRow.task||'',doneBy:staff,completedTime:'Saving…',completedDate:completedDateKeyNow(),date:completedDateKeyNow(),duration:'',status:optimisticStatus,remark,images:imageRefsFromRow(sourceRow),remarkImages:remarkImages.map((x,i)=>({name:x.name,thumbnailUrl:x.dataUrl,viewUrl:x.dataUrl}))};
   if(done){done.disabled=true;done.textContent='Completing…';}
   closeCompletionModal();
   doneBySelections.delete(requestId);
@@ -871,7 +1003,7 @@ async function confirmCompletion(){
   const duration=r.duration,doneBy=r.doneBy||staff;
   const idx=completedRows.findIndex(row=>String(row.id)===requestId);
   if(idx>=0){completedRows[idx]={...completedRows[idx],duration,doneBy,status:r.status||optimisticStatus,completedDate:r.completedDate||completedRows[idx].completedDate,completedTime:r.completedTime||completedRows[idx].completedTime,completedTimestamp:r.completedTimestamp||'',remark:r.remark??remark,remarkImages:r.remarkImages||[]};void saveCompletedCache(completedDateKeyNow(),completedRows);renderCompleted();}
-  setTimeout(()=>refreshCompleted().catch(()=>{}),1200);refreshTasks().catch(()=>{});
+  setTimeout(()=>{refreshCompleted().catch(()=>{});refreshNotifications(true).catch(()=>{});},900);refreshTasks().catch(()=>{});
 }
 $('tasks').addEventListener('change',e=>{
   const select=e.target.closest('.done-by');
@@ -885,6 +1017,7 @@ $('tasks').addEventListener('change',e=>{
 });
 $('tasks').addEventListener('click',async e=>{
   const img=e.target.closest('[data-image-url]');if(img){openImageUrl(img.dataset.imageUrl);return;}
+  const reply=e.target.closest('.reply');if(reply){const row=liveRows.find(x=>String(x.id)===String(reply.dataset.id));if(row)await openDiscussion(row.id,row.room,row.request);return;}
   const workflowAction=e.target.closest('.ack,.handover');
   if(workflowAction){
     const card=workflowAction.closest('.task-card');const select=card?.querySelector('.done-by');const staff=String(select?.value||'').trim();
@@ -912,7 +1045,7 @@ $('tasks').addEventListener('click',async e=>{
   openCompletionModal(sourceRow,requestId,staff);
   if(action.classList.contains('remark')) setTimeout(()=>setCompletionMode('pending'),0);
 });
-$('completed').addEventListener('click',e=>{const img=e.target.closest('[data-image-url]');if(img) openImageUrl(img.dataset.imageUrl);});
+$('completed').addEventListener('click',async e=>{const img=e.target.closest('[data-image-url]');if(img){openImageUrl(img.dataset.imageUrl);return;}const reply=e.target.closest('.reply');if(reply){const row=completedRows.find(x=>String(x.id)===String(reply.dataset.id));if(row)await openDiscussion(row.id,row.room,row.request);}});
 document.querySelectorAll('.completion-option').forEach(option=>option.addEventListener('click',()=>setCompletionMode(option.dataset.value)));
 $('closeRemark').onclick=closeCompletionModal;$('cancelRemark').onclick=closeCompletionModal;$('confirmDone').onclick=confirmCompletion;
 $('remarkModal').addEventListener('click',e=>{if(e.target===$('remarkModal'))closeCompletionModal();});
@@ -955,9 +1088,14 @@ async function boot(){
   await ensureServiceWorker();
   const queryTab=new URLSearchParams(window.location.search).get('tab');
   if(queryTab==='tasks') switchTab('tasks');
-  completedRows=await loadCompletedCache(completedDateKeyNow());
+  // First shared read synchronizes the client clock with Apps Script before
+  // date-sensitive history filtering, countdowns, and default Due Time values.
+  await refreshTasks();
+  if(!p) updateDueFromTiming();
+  completedDateKey=completedDateKeyNow();
+  completedRows=await loadCompletedCache(completedDateKey);
   renderCompleted();
-  await Promise.all([refreshTasks(), refreshCompleted()]);
+  await Promise.all([refreshCompleted(),refreshNotifications(false)]);
   // Shared Google Sheets polling starts only after per-device settings are loaded.
   realtimeSyncTick();
   window.setInterval(realtimeSyncTick, Math.max(5, Number(settings.syncIntervalSeconds) || 10) * 1000);
@@ -1011,6 +1149,8 @@ async function realtimeSyncTick(){
     if(Date.now()-lastCompletedRefreshAt>=(Math.max(5,Number(settings.syncIntervalSeconds)||10)*1000)){
       await refreshCompleted();
     }
+    await refreshNotifications(true);
+    if(activeDiscussion && !$('discussionModal').classList.contains('hidden')) await refreshDiscussion();
     
     // Evaluate shared task due times into an in-app banner, device notification and optional alarm.
     evaluateDueNotifications(liveRows);

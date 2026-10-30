@@ -9,7 +9,7 @@
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icon192.png">
 <title>IRD Assistant</title>
-<link rel="stylesheet" href="./assistant.css?v=2.7.9.4-wib-hotfix1">
+<link rel="stylesheet" href="./assistant.css?v=2.7.9.5-wib-sync-discussion">
 </head>
 <body>
   <header class="topbar">
@@ -20,7 +20,12 @@
         <div class="brand-sub">WhatsApp → Google Sheets</div>
       </div>
     </div>
-    <button id="closeWindow" class="icon-btn" title="Close">×</button>
+    <div class="topbar-actions">
+      <button id="notificationBell" class="notification-bell" type="button" aria-label="Open notifications" title="Notifications">
+        <span aria-hidden="true">🔔</span><span id="notificationBadge" class="notification-badge hidden">0</span>
+      </button>
+      <button id="closeWindow" class="icon-btn" title="Close">×</button>
+    </div>
   </header>
 
   <nav class="tabs">
@@ -126,6 +131,23 @@
     </div>
   </div>
 
+  <div id="notificationModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="notificationTitle">
+    <section class="notification-modal">
+      <header class="feature-modal-head"><div><h3 id="notificationTitle">Notifications</h3><small>Task Completed • Shared with all IRD Assistant users</small></div><button id="closeNotifications" type="button" class="icon-btn" aria-label="Close">×</button></header>
+      <div id="notificationList" class="notification-list"><div class="notification-empty">Loading notifications…</div></div>
+    </section>
+  </div>
+
+  <div id="discussionModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="discussionTitle">
+    <section class="discussion-modal">
+      <header class="feature-modal-head"><div><h3 id="discussionTitle">Task Discussion</h3><small id="discussionSubtitle"></small></div><button id="discussionClose" type="button" class="icon-btn" aria-label="Close">×</button></header>
+      <div id="discussionMessages" class="discussion-messages"><div class="discussion-empty">Loading discussion…</div></div>
+      <label class="discussion-compose-label">Write a reply<textarea id="discussionInput" rows="3" maxlength="3000" placeholder="Type your message…"></textarea></label>
+      <div id="discussionError" class="error"></div>
+      <div class="actions"><button id="discussionCancel" type="button" class="secondary">Close</button><button id="sendDiscussionReply" type="button" class="primary">Send Reply</button></div>
+    </section>
+  </div>
+
   <footer><span id="connectionDot" class="dot"></span><span id="connectionText">Checking connection…</span><span class="spacer"></span><span id="computerText"></span></footer>
   <script>
     (function () {
@@ -178,6 +200,6 @@
       window.__IRD_MARK_CORE_LOADED__ = function () { coreLoaded = true; };
     })();
   </script>
-  <script src="./assistant.js?v=2.7.9.4-wib-hotfix1" onload="window.__IRD_MARK_CORE_LOADED__ && window.__IRD_MARK_CORE_LOADED__()"></script>
+  <script src="./assistant.js?v=2.7.9.5-wib-sync-discussion" onload="window.__IRD_MARK_CORE_LOADED__ && window.__IRD_MARK_CORE_LOADED__()"></script>
 </body>
 </html>

@@ -56,3 +56,42 @@
   .image-dropzone{min-height:100px;padding:12px}
   .image-preview-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
+
+/* v2.7.9.5 — shared notification feed and task discussion (additive) */
+.topbar-actions{display:flex;align-items:center;gap:10px}
+.notification-bell{position:relative;width:38px;height:38px;border:1px solid #dbe4df;border-radius:10px;background:#fff;color:#23352d;display:grid;place-items:center;font-size:18px;cursor:pointer}
+.notification-badge{position:absolute;right:-6px;top:-6px;min-width:18px;height:18px;padding:0 4px;border-radius:99px;background:#d92d20;color:#fff;font-size:10px;font-weight:800;display:grid;place-items:center;border:2px solid #fff}
+.notification-badge.hidden{display:none!important}
+.feature-modal-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;padding-bottom:10px;border-bottom:1px solid #e4eae6}
+.feature-modal-head h3{margin:0;font-size:16px;color:#21332b}
+.feature-modal-head small{display:block;margin-top:4px;color:#738078;font-size:10px;line-height:1.35}
+.notification-modal,.discussion-modal{width:100%;max-width:520px;max-height:min(82vh,760px);display:flex;flex-direction:column;background:#fff;border-radius:16px;padding:14px;box-shadow:0 14px 40px rgba(0,0,0,.25);overflow:hidden}
+.notification-list{overflow:auto;padding:8px 0 0;min-height:80px}
+.notification-item{width:100%;display:flex;align-items:flex-start;gap:10px;padding:11px 8px;border:0;border-bottom:1px solid #edf1ee;background:#fff;text-align:left;cursor:pointer;color:#23352d}
+.notification-item:hover{background:#f7faf8}
+.notification-item.unread{background:#f0faf4}
+.notification-item-icon{width:28px;height:28px;flex:none;display:grid;place-items:center;border-radius:50%;background:#e0f5e9;color:#087448;font-weight:900}
+.notification-item-copy{display:flex;flex:1;min-width:0;flex-direction:column;gap:4px}
+.notification-item-copy b{font-size:12px}
+.notification-item-copy span{font-size:11px;line-height:1.4;overflow-wrap:anywhere}
+.notification-item-copy small{font-size:9px;color:#758179}
+.notification-unread-dot{width:8px;height:8px;flex:none;border-radius:50%;background:#0b8f5a;margin-top:7px}
+.notification-empty,.discussion-empty{padding:24px 12px;text-align:center;color:#7a857f;font-size:11px}
+.notification-highlight{outline:2px solid #0b8f5a;outline-offset:2px}
+.discussion-messages{min-height:150px;max-height:42vh;overflow:auto;padding:10px 2px;display:flex;flex-direction:column;gap:9px}
+.discussion-message{align-self:flex-start;max-width:88%;padding:9px 11px;border-radius:12px 12px 12px 3px;background:#f0f4f2;border:1px solid #e1e8e3;color:#23352d}
+.discussion-message.own{align-self:flex-end;background:#eaf8f0;border-color:#cbe9d8;border-radius:12px 12px 3px 12px}
+.discussion-message b{font-size:10px;color:#276147}
+.discussion-message p{margin:4px 0;font-size:12px;line-height:1.45;white-space:pre-wrap;overflow-wrap:anywhere}
+.discussion-message small{font-size:9px;color:#7d8982}
+.discussion-compose-label{font-size:11px;font-weight:700;color:#42514a;margin-top:5px}
+.discussion-compose-label textarea{min-height:72px;resize:vertical}
+.completed-actions{display:flex;justify-content:flex-end;margin-top:8px}
+.completed-actions button{font-size:10px;padding:7px 9px}
+.task-actions .done-buttons{grid-template-columns:repeat(4,minmax(0,1fr))}
+.task-actions .reply{background:#edf3f0;color:#284438;border:1px solid #d8e1dc}
+@media(max-width:520px){
+  .task-actions .done-buttons{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .notification-modal,.discussion-modal{max-height:88vh;border-radius:14px}
+  .discussion-messages{max-height:40vh}
+}
