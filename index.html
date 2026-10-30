@@ -9,7 +9,7 @@
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icon192.png">
 <title>IRD Assistant</title>
-<link rel="stylesheet" href="assistant.css">
+<link rel="stylesheet" href="./assistant.css?v=2.7.9.4-wib-hotfix1">
 </head>
 <body>
   <header class="topbar">
@@ -127,6 +127,57 @@
   </div>
 
   <footer><span id="connectionDot" class="dot"></span><span id="connectionText">Checking connection…</span><span class="spacer"></span><span id="computerText"></span></footer>
-  <script src="assistant.js"></script>
+  <script>
+    (function () {
+      let coreLoaded = false;
+      window.addEventListener('error', function (event) {
+        if (event.target && event.target.tagName === 'SCRIPT') {
+          const label = document.getElementById('connectionText');
+          if (label) label.textContent = 'App script failed to load — check assistant.js deployment';
+          const dot = document.getElementById('connectionDot');
+          if (dot) dot.className = 'dot bad';
+          enableFallbackNavigation();
+          return;
+        }
+        if (event.message) {
+          const label = document.getElementById('connectionText');
+          if (label && label.textContent === 'Checking connection…') label.textContent = 'App runtime error — reload and inspect deployment';
+          const dot = document.getElementById('connectionDot');
+          if (dot) dot.className = 'dot bad';
+          console.error('IRD Assistant runtime error:', event.message, event.filename, event.lineno);
+          enableFallbackNavigation();
+        }
+      }, true);
+      window.addEventListener('unhandledrejection', function (event) {
+        console.error('IRD Assistant unhandled startup rejection:', event.reason);
+        const label = document.getElementById('connectionText');
+        if (label && label.textContent === 'Checking connection…') label.textContent = 'App startup error — reload and inspect deployment';
+      });
+      function enableFallbackNavigation() {
+        if (window.__IRD_FALLBACK_NAV_ENABLED__) return;
+        window.__IRD_FALLBACK_NAV_ENABLED__ = true;
+        document.querySelectorAll('.tab').forEach(function (button) {
+          button.addEventListener('click', function () {
+            const name = button.dataset.tab;
+            document.querySelectorAll('.tab').forEach(function (item) { item.classList.toggle('active', item === button); });
+            document.querySelectorAll('.tab-panel').forEach(function (panel) { panel.classList.toggle('active', panel.id === 'tab-' + name); });
+          });
+        });
+        const options = document.getElementById('openOptions');
+        if (options) options.addEventListener('click', function () { window.location.href = './options.html'; });
+      }
+      window.setTimeout(function () {
+        const label = document.getElementById('connectionText');
+        if (!coreLoaded && label && label.textContent === 'Checking connection…') {
+          label.textContent = 'App not initialized — assistant.js did not finish loading';
+          const dot = document.getElementById('connectionDot');
+          if (dot) dot.className = 'dot bad';
+          enableFallbackNavigation();
+        }
+      }, 8000);
+      window.__IRD_MARK_CORE_LOADED__ = function () { coreLoaded = true; };
+    })();
+  </script>
+  <script src="./assistant.js?v=2.7.9.4-wib-hotfix1" onload="window.__IRD_MARK_CORE_LOADED__ && window.__IRD_MARK_CORE_LOADED__()"></script>
 </body>
 </html>

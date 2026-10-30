@@ -2,22 +2,29 @@
 window.VercelStorageHandler = {
     get: function(keys, callback) {
         let result = {};
+        const read = (key) => {
+            try { return window.localStorage.getItem(key); }
+            catch (error) { console.warn('IRD Assistant localStorage read blocked:', error); return null; }
+        };
         if (keys === null) {
-            for (let i = 0; i < localStorage.length; i++) {
-                let k = localStorage.key(i);
-                try { result[k] = JSON.parse(localStorage.getItem(k)); } catch(e) { result[k] = localStorage.getItem(k); }
-            }
+            try {
+                for (let i = 0; i < window.localStorage.length; i++) {
+                    let k = window.localStorage.key(i);
+                    let val = read(k);
+                    try { result[k] = val === null ? undefined : JSON.parse(val); } catch(e) { result[k] = val; }
+                }
+            } catch (error) { console.warn('IRD Assistant localStorage enumeration blocked:', error); }
         } else if (typeof keys === 'string') {
-            let val = localStorage.getItem(keys);
+            let val = read(keys);
             try { result[keys] = val ? JSON.parse(val) : undefined; } catch(e) { result[keys] = val; }
         } else if (Array.isArray(keys)) {
             keys.forEach(k => {
-                let val = localStorage.getItem(k);
+                let val = read(k);
                 try { result[k] = val ? JSON.parse(val) : undefined; } catch(e) { result[k] = val; }
             });
         } else if (typeof keys === 'object') {
             Object.keys(keys).forEach(k => {
-                let val = localStorage.getItem(k);
+                let val = read(k);
                 if (val !== null) {
                     try { result[k] = JSON.parse(val); } catch(e) { result[k] = val; }
                 } else {
@@ -34,13 +41,14 @@ window.VercelStorageHandler = {
     set: function(data, callback) {
         Object.keys(data).forEach(k => {
             let val = typeof data[k] === 'object' ? JSON.stringify(data[k]) : data[k];
-            localStorage.setItem(k, val);
+            try { window.localStorage.setItem(k, val); }
+            catch (error) { console.warn('IRD Assistant localStorage write blocked:', error); }
         });
         if (callback) setTimeout(callback, 0);
     },
     remove: function(keys, callback) {
         let keyList = Array.isArray(keys) ? keys : [keys];
-        keyList.forEach(k => localStorage.removeItem(k));
+        keyList.forEach(k => { try { window.localStorage.removeItem(k); } catch (error) { console.warn('IRD Assistant localStorage remove blocked:', error); } });
         if (callback) setTimeout(callback, 0);
     }
 };
@@ -208,13 +216,24 @@ function normalizeSpreadsheetId(value){
 }
 const IRD_TIME_ZONE = 'Asia/Jakarta';
 function jakartaDateTimeParts(date = new Date()){
-  const parts=new Intl.DateTimeFormat('en-GB',{
-    timeZone:IRD_TIME_ZONE,year:'numeric',month:'2-digit',day:'2-digit',
-    hour:'2-digit',minute:'2-digit',hourCycle:'h23'
-  }).formatToParts(date);
-  const values={};
-  parts.forEach(part=>{if(part.type!=='literal') values[part.type]=part.value;});
-  return values;
+  try {
+    const parts=new Intl.DateTimeFormat('en-GB',{
+      timeZone:IRD_TIME_ZONE,year:'numeric',month:'2-digit',day:'2-digit',
+      hour:'2-digit',minute:'2-digit',hourCycle:'h23'
+    }).formatToParts(date);
+    const values={};
+    parts.forEach(part=>{if(part.type!=='literal') values[part.type]=part.value;});
+    if(values.year && values.month && values.day && values.hour && values.minute) return values;
+  } catch(error) { console.warn('Intl Asia/Jakarta formatting unavailable; using UTC+7 fallback:', error); }
+  // Indonesia has no daylight-saving changes; this fallback is WIB (UTC+7).
+  const shifted=new Date(date.getTime()+7*60*60*1000);
+  return {
+    year:String(shifted.getUTCFullYear()),
+    month:String(shifted.getUTCMonth()+1).padStart(2,'0'),
+    day:String(shifted.getUTCDate()).padStart(2,'0'),
+    hour:String(shifted.getUTCHours()).padStart(2,'0'),
+    minute:String(shifted.getUTCMinutes()).padStart(2,'0')
+  };
 }
 function localDateInputValue(date = new Date()){
   const p=jakartaDateTimeParts(date);
@@ -237,6 +256,18 @@ function updateConnectionIndicator(){
   const configured=hasEndpoint&&hasSpreadsheet;
   $('connectionDot').className='dot '+(configured?'ok':'bad');
   $('connectionText').textContent=configured?'Google Sheets connected':'Google Sheets not configured';
+}
+function reportStartupError(error){
+  const detail=String(error && (error.stack || error.message) || error || 'Unknown startup error');
+  console.error('IRD Assistant startup failed:', error);
+  const dot=$('connectionDot'), label=$('connectionText');
+  if(dot) dot.className='dot bad';
+  if(label) label.textContent='App startup error — open Console / check deployment';
+  const banner=$('alertBanner');
+  if(banner){
+    banner.className='alert due';
+    banner.textContent='IRD Assistant could not finish starting. Reload the page. Details: '+detail.slice(0,240);
+  }
 }
 
 async function refreshSettingsSnapshot(){
@@ -950,7 +981,7 @@ window.addEventListener('storage', event => {
   if(event.key===null || relevantKeys.includes(event.key)) refreshConnectionStatus();
 });
 
-boot();
+boot().catch(reportStartupError);
 setInterval(()=>{
   updateLiveTaskDisplay();
   const currentKey=completedDateKeyNow();
