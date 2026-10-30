@@ -133,7 +133,7 @@ window.VercelBackend = {
             case 'SAVE_REQUEST': payload.action = 'createRequest'; payload.request = message.request; payload.staffName = s.staffName; payload.computerName = s.computerName; break;
             case 'LIST_LIVE': 
             case 'SYNC_NOW': payload.action = 'listLive'; payload.sheetName = s.sheetName || 'LIVE REQUESTS'; payload.reminderMinutes = s.reminderMinutes || 5; break;
-            case 'LIST_TODAY_HISTORY': payload.action = 'listTodayHistory'; payload.historySheetName = s.historySheetName || 'HISTORY'; payload.clientDateKey = message.clientDateKey; break;
+            case 'LIST_TODAY_HISTORY': payload.action = 'listTodayHistory'; payload.historySheetName = s.historySheetName || 'HISTORY'; break;
             case 'ACKNOWLEDGE_REQUEST': payload.action = 'acknowledgeRequest'; Object.assign(payload, message); break;
             case 'HANDOVER_REQUEST': payload.action = 'handoverRequest'; Object.assign(payload, message); break;
             case 'COMPLETE_REQUEST': payload.action = 'completeRequest'; Object.assign(payload, message); break;
@@ -206,18 +206,29 @@ function normalizeSpreadsheetId(value){
   const m=v.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
   return m?m[1]:v.replace(/[?#].*$/i,"").replace(/\/edit.*$/i,"").trim();
 }
+const IRD_TIME_ZONE = 'Asia/Jakarta';
+function jakartaDateTimeParts(date = new Date()){
+  const parts=new Intl.DateTimeFormat('en-GB',{
+    timeZone:IRD_TIME_ZONE,year:'numeric',month:'2-digit',day:'2-digit',
+    hour:'2-digit',minute:'2-digit',hourCycle:'h23'
+  }).formatToParts(date);
+  const values={};
+  parts.forEach(part=>{if(part.type!=='literal') values[part.type]=part.value;});
+  return values;
+}
 function localDateInputValue(date = new Date()){
-  const y=date.getFullYear(),m=String(date.getMonth()+1).padStart(2,'0'),d=String(date.getDate()).padStart(2,'0');
-  return `${y}-${m}-${d}`;
+  const p=jakartaDateTimeParts(date);
+  return `${p.year}-${p.month}-${p.day}`;
 }
 function localTimeInputValue(date = new Date()){
-  return `${String(date.getHours()).padStart(2,'0')}:${String(date.getMinutes()).padStart(2,'0')}`;
+  const p=jakartaDateTimeParts(date);
+  return `${p.hour}:${p.minute}`;
 }
 function parseDueInput(){
   const date=$('dueDate').value,time=$('dueTime').value;
   if(!date||!time) return null;
-  const [y,m,d]=date.split('-').map(Number),[hh,mm]=time.split(':').map(Number);
-  const dt=new Date(y,m-1,d,hh,mm,0,0);
+  // Due date/time fields represent hotel local time, not the device timezone.
+  const dt=new Date(`${date}T${time}:00+07:00`);
   return Number.isFinite(dt.getTime())?dt:null;
 }
 function updateConnectionIndicator(){
@@ -739,7 +750,7 @@ async function refreshCompleted(){
     renderCompleted();
   }
 
-  const r=await VercelBackend.sendMessage({type:'LIST_TODAY_HISTORY', clientDateKey:currentKey});
+  const r=await VercelBackend.sendMessage({type:'LIST_TODAY_HISTORY'});
   if(!r?.ok){
     // Keep the local same-day cache only as an offline fallback.
     lastCompletedRefreshAt=Date.now();
@@ -821,14 +832,14 @@ async function confirmCompletion(){
   liveRows=liveRows.filter(row=>String(row.id)!==requestId);
   completedRows=[optimistic,...completedRows.filter(row=>String(row.id)!==requestId)];
   void saveCompletedCache(completedDateKeyNow(),completedRows);renderTasks();renderCompleted();
-  const r=await VercelBackend.sendMessage({type:'COMPLETE_REQUEST',requestId,doneBy:staff,completionStatus:mode==='pending'?'Completed with Pending':'',remark,remarkImages,clientDateKey:completedDateKeyNow(),clientTime:localTimeInputValue()});
+  const r=await VercelBackend.sendMessage({type:'COMPLETE_REQUEST',requestId,doneBy:staff,completionStatus:mode==='pending'?'Completed with Pending':'',remark,remarkImages});
   if(!r?.ok){
     completedRows=completedRows.filter(row=>String(row.id)!==requestId);void saveCompletedCache(completedDateKeyNow(),completedRows);
     liveRows=[sourceRow,...liveRows.filter(row=>String(row.id)!==requestId)];renderTasks();renderCompleted();alert(r?.error||'Could not complete request.');return;
   }
   const duration=r.duration,doneBy=r.doneBy||staff;
   const idx=completedRows.findIndex(row=>String(row.id)===requestId);
-  if(idx>=0){completedRows[idx]={...completedRows[idx],duration,doneBy,status:r.status||optimisticStatus,remark:r.remark??remark,remarkImages:r.remarkImages||[]};void saveCompletedCache(completedDateKeyNow(),completedRows);renderCompleted();}
+  if(idx>=0){completedRows[idx]={...completedRows[idx],duration,doneBy,status:r.status||optimisticStatus,completedDate:r.completedDate||completedRows[idx].completedDate,completedTime:r.completedTime||completedRows[idx].completedTime,completedTimestamp:r.completedTimestamp||'',remark:r.remark??remark,remarkImages:r.remarkImages||[]};void saveCompletedCache(completedDateKeyNow(),completedRows);renderCompleted();}
   setTimeout(()=>refreshCompleted().catch(()=>{}),1200);refreshTasks().catch(()=>{});
 }
 $('tasks').addEventListener('change',e=>{
