@@ -3,6 +3,7 @@
     {"source": "/", "headers": [{"key": "Cache-Control", "value": "no-store, no-cache, must-revalidate, max-age=0"}]},
     {"source": "/index.html", "headers": [{"key": "Cache-Control", "value": "no-store, no-cache, must-revalidate, max-age=0"}]},
     {"source": "/assistant.js", "headers": [{"key": "Cache-Control", "value": "no-store, no-cache, must-revalidate, max-age=0"}]},
+    {"source": "/vercel-bridge.js", "headers": [{"key": "Cache-Control", "value": "no-store, no-cache, must-revalidate, max-age=0"}]},
     {"source": "/assistant.css", "headers": [{"key": "Cache-Control", "value": "no-store, no-cache, must-revalidate, max-age=0"}]},
     {"source": "/service-worker.js", "headers": [{"key": "Cache-Control", "value": "no-store, no-cache, must-revalidate, max-age=0"}]},
     {"source": "/options.js", "headers": [{"key": "Cache-Control", "value": "no-store, no-cache, must-revalidate, max-age=0"}]}
