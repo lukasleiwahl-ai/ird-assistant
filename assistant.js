@@ -723,12 +723,41 @@ function renderNotifications(){
   if(!notificationRows.length){list.innerHTML='<div class="notification-empty">No notifications yet.</div>';return;}
   list.innerHTML=notificationRows.map(item=>`<button type="button" class="notification-item ${item.isRead?'read':'unread'}" data-notification-id="${esc(item.id)}" data-task-id="${esc(item.taskId)}"><span class="notification-item-icon">✓</span><span class="notification-item-copy"><b>${esc(item.title||'Task Completed')}</b><span>${esc(item.message||'A task has been completed.')}</span><small>${esc(item.room?'Room '+item.room:'')} • ${esc(item.createdAtLabel||'')}</small></span>${item.isRead?'':'<i class="notification-unread-dot"></i>'}</button>`).join('');
 }
+let liveToastTimer=null;let liveToastTarget=null;
+function showLiveToast(item){
+  const toast=$('liveToast');if(!toast||!item)return;
+  const isReply=item.type==='TASK_REPLY';toast.classList.toggle('reply',isReply);
+  $('liveToastIcon').textContent=isReply?'💬':'✓';
+  $('liveToastTitle').textContent=item.title||(isReply?'New Task Reply':'Task Completed');
+  $('liveToastMessage').textContent=item.message||'';
+  $('liveToastMeta').textContent=(item.room?'Room '+item.room+' • ':'')+(item.createdAtLabel||'Tap to open');
+  liveToastTarget=item;toast.classList.remove('hidden');
+  if(liveToastTimer)clearTimeout(liveToastTimer);
+  liveToastTimer=setTimeout(()=>{toast.classList.add('hidden');liveToastTarget=null;},8500);
+}
+async function openLiveToastTarget(){
+  const item=liveToastTarget;if(!item)return;
+  $('liveToast').classList.add('hidden');if(liveToastTimer)clearTimeout(liveToastTimer);liveToastTarget=null;
+  if(item.type==='TASK_REPLY'){
+    const row=[...liveRows,...completedRows].find(x=>String(x.id)===String(item.taskId));
+    await switchTab(row&&completedRows.some(x=>String(x.id)===String(item.taskId))?'completed':'tasks');
+    await openDiscussion(item.taskId,item.room||row?.room||'',row?.request||row?.task||'');
+  }else{
+    await switchTab('completed');
+    const card=Array.from(document.querySelectorAll('.completed-card')).find(x=>String(x.dataset.id)===String(item.taskId));
+    if(card){card.scrollIntoView({behavior:'smooth',block:'center'});card.classList.add('notification-highlight');setTimeout(()=>card.classList.remove('notification-highlight'),1600);}
+  }
+}
 async function refreshNotifications(showNew=false){
   const identity=await getAppIdentity();
   const response=await chrome.runtime.sendMessage({type:'LIST_NOTIFICATIONS',readerKey:identity.readerKey,readerName:identity.readerName});
   if(!response?.ok)return;
   const data=unwrapFeatureResult(response);acceptServerClock(data.serverNow);
   const rows=Array.isArray(data.rows)?data.rows:[];
+  if(notificationFeedReady){
+    const fresh=rows.filter(x=>!notificationKnownIds.has(String(x.id||''))).sort((a,b)=>(Date.parse(a.createdAt)||0)-(Date.parse(b.createdAt)||0));
+    if(fresh.length)showLiveToast(fresh[fresh.length-1]);
+  }
   notificationRows=rows;notificationKnownIds=new Set(rows.map(x=>String(x.id||'')));notificationFeedReady=true;renderNotifications();
 }
 async function markNotificationRead(notificationId){
@@ -785,6 +814,8 @@ async function sendDiscussionReply(){
   finally{button.disabled=false;button.textContent='Send Reply';}
 }
 $('notificationBell').addEventListener('click',openNotifications);
+$('liveToast').addEventListener('click',e=>{if(e.target.closest('#liveToastClose'))return;openLiveToastTarget();});
+$('liveToastClose').addEventListener('click',e=>{e.stopPropagation();$('liveToast').classList.add('hidden');liveToastTarget=null;if(liveToastTimer)clearTimeout(liveToastTimer);});
 $('closeNotifications').addEventListener('click',closeNotifications);
 const notificationFooterClose = $('closeNotificationsFooter');
 if (notificationFooterClose) notificationFooterClose.addEventListener('click', closeNotifications);
@@ -810,4 +841,4 @@ $('completed').addEventListener('click',async e=>{
 async function refreshSharedCommunication(){
   try{await refreshNotifications(false);if(activeDiscussion&&!$('discussionModal').classList.contains('hidden')){const rows=await refreshDiscussion();if(Array.isArray(rows))applyDiscussionSummary(activeDiscussion.taskId,rows);}}catch(_){}
 }
-setInterval(refreshSharedCommunication,12000);
+setInterval(refreshSharedCommunication,5000);

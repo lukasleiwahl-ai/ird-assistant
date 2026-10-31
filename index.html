@@ -9,7 +9,7 @@
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icon192.png">
 <title>IRD Assistant</title>
-<link rel="stylesheet" href="./assistant.css?v=2.7.9.11-notification-modal-fix">
+<link rel="stylesheet" href="./assistant.css?v=2.7.9.13-live-toast">
 </head>
 <body>
   <header class="topbar">
@@ -36,6 +36,7 @@
   </nav>
 
   <div id="alertBanner" class="alert hidden"></div>
+  <div id="liveToast" class="live-toast hidden" role="status" aria-live="polite"><div class="live-toast-icon" id="liveToastIcon">✓</div><div class="live-toast-copy"><b id="liveToastTitle">IRD Assistant</b><span id="liveToastMessage"></span><small id="liveToastMeta"></small></div><button type="button" id="liveToastClose" aria-label="Dismiss notification">×</button></div>
   <main>
     <section id="tab-new" class="tab-panel active">
       <div id="importBanner" class="banner hidden"><span class="check">✓</span><div><b>Message imported</b><small>Room number, guest name and request are read from the WhatsApp message you selected. Please check before saving.</small></div></div>
@@ -200,7 +201,7 @@
       window.__IRD_MARK_CORE_LOADED__ = function () { coreLoaded = true; };
     })();
   </script>
-  <script src="./vercel-bridge.js?v=2.7.9.12"></script>
-  <script src="./assistant.js?v=2.7.9.12-vercel-bridge" onload="window.__IRD_MARK_CORE_LOADED__ && window.__IRD_MARK_CORE_LOADED__()"></script>
+  <script src="./vercel-bridge.js?v=2.7.9.13"></script>
+  <script src="./assistant.js?v=2.7.9.13-live-toast" onload="window.__IRD_MARK_CORE_LOADED__ && window.__IRD_MARK_CORE_LOADED__()"></script>
 </body>
 </html>

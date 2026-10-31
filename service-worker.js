@@ -1,5 +1,5 @@
 /* IRD Assistant PWA service worker — notification delivery and click routing. */
-const SW_VERSION = 'ird-assistant-pwa-v2.7.9.11';
+const SW_VERSION = 'ird-assistant-pwa-v2.7.9.13';
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();

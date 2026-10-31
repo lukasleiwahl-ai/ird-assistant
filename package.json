@@ -1,6 +1,6 @@
 {
   "name": "ird-assistant-pwa",
-  "version": "2.7.9.11",
+  "version": "2.7.9.13",
   "private": true,
   "description": "IRD Assistant PWA with WIB server clock, shared internal notifications, and cross-browser task discussion",
   "engines": {
