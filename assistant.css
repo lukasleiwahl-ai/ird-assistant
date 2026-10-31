@@ -95,3 +95,17 @@
   .notification-modal,.discussion-modal{max-height:88vh;border-radius:14px}
   .discussion-messages{max-height:40vh}
 }
+
+
+/* v2.7.9.6 — persistent task discussion preview */
+.task-discussion-preview,.discussion-preview{margin-top:10px;padding:10px 12px;border:1px solid #cfe6d9;border-radius:12px;background:#f2faf5;color:#243b30;min-width:0}
+.task-discussion-preview.hidden{display:none!important}
+.discussion-preview-head{font-size:10px;font-weight:800;letter-spacing:.02em;color:#64736b;margin-bottom:6px}
+.discussion-preview-body{display:flex;flex-direction:column;gap:3px;min-width:0}
+.discussion-preview-body b{font-size:11px;color:#176b45}
+.discussion-preview-body span{font-size:12px;line-height:1.4;white-space:pre-wrap;overflow-wrap:anywhere}
+.discussion-preview-foot{font-size:10px;color:#718078;margin-top:6px}
+.completed-discussion-preview{margin-top:9px}
+
+/* v2.7.9.8: unread reply marker; additive to existing Vercel dashboard */
+.reply-unread{position:relative}.reply-unread:after{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;background:#0b8f5a;margin-left:5px;vertical-align:middle}

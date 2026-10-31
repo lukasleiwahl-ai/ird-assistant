@@ -1,0 +1,65 @@
+PASS 64/64
+PASS | All v2.7.9.4 files retained
+PASS | Baseline unchanged: content.js
+PASS | Baseline unchanged: content.css
+PASS | Baseline unchanged: ird_cloche.png
+PASS | Baseline unchanged: icon16.png
+PASS | Baseline unchanged: icon32.png
+PASS | Baseline unchanged: icon48.png
+PASS | Baseline unchanged: icon128.png
+PASS | Baseline unchanged: popup.js
+PASS | Baseline unchanged: options.html
+PASS | Baseline unchanged: options.js
+PASS | Baseline unchanged: offscreen.html
+PASS | Baseline unchanged: offscreen.js
+PASS | Baseline unchanged: order_overdue_alarm.wav
+PASS | MV3 manifest
+PASS | Extension version 2.7.9.8
+PASS | Original WhatsApp content script retained
+PASS | Flying Button launcher code retained
+PASS | Track Guest Request hook retained
+PASS | JS syntax: assistant.js
+PASS | JS syntax: options.js
+PASS | JS syntax: popup.js
+PASS | JS syntax: service-worker.js
+PASS | JS syntax: api/push.js
+PASS | JS syntax: browser-extension/assistant.js
+PASS | JS syntax: browser-extension/background.js
+PASS | JS syntax: browser-extension/content.js
+PASS | JS syntax: browser-extension/options.js
+PASS | JS syntax: browser-extension/popup.js
+PASS | JS syntax: browser-extension/offscreen.js
+PASS | Apps Script syntax: google-apps-script/Code.gs
+PASS | Apps Script syntax: browser-extension/google-apps-script/Code.gs
+PASS | JSON valid: browser-extension/manifest.json
+PASS | JSON valid: manifest.json
+PASS | JSON valid: google-apps-script/appsscript.json
+PASS | JSON valid: browser-extension/google-apps-script/appsscript.json
+PASS | JSON valid: package.json
+PASS | Extension Assistant DOM references
+PASS | Vercel PWA DOM references
+PASS | Vercel has openDiscussion
+PASS | Vercel has refreshDiscussion
+PASS | Vercel has sendDiscussionReply
+PASS | Vercel has LIST_TASK_REPLIES
+PASS | Vercel has POST_TASK_REPLY
+PASS | Vercel has MARK_TASK_REPLIES_READ
+PASS | Extension has openDiscussion
+PASS | Extension has refreshDiscussion
+PASS | Extension has sendDiscussionReply
+PASS | Extension has LIST_TASK_REPLIES
+PASS | Extension has POST_TASK_REPLY
+PASS | Extension has MARK_TASK_REPLIES_READ
+PASS | Apps Script has recordTaskCompletedNotification_
+PASS | Apps Script has listNotifications_
+PASS | Apps Script has markNotificationRead_
+PASS | Apps Script has listTaskReplies_
+PASS | Apps Script has postTaskReply_
+PASS | Apps Script has markTaskRepliesRead_
+PASS | Apps Script has attachDiscussionSummaries_
+PASS | Apps Script has setSpreadsheetTimezone_
+PASS | Apps Script has Handover At
+PASS | Asia/Jakarta timezone configured
+PASS | Apps Script copies match
+PASS | PWA cache-busting version
+PASS | PWA service worker cache version

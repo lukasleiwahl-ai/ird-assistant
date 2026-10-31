@@ -126,6 +126,7 @@ window.VercelBackend = {
         let payload = { spreadsheetId: s.spreadsheetId, sheetName: s.sheetName || "LIVE REQUESTS", historySheetName: s.historySheetName || "HISTORY" };
         switch (message.type) {
             case 'TEST_CONNECTION': payload.action = 'testConnection'; break;
+            case 'FETCH_STAFF_DIRECTORY': payload.action = 'getStaffDirectory'; payload.directorySheetName = message.directorySheetName || 'Staff Directory'; break;
             case 'SAVE_REQUEST': payload.action = 'createRequest'; payload.request = message.request; payload.staffName = s.staffName; payload.computerName = s.computerName; break;
             case 'LIST_LIVE': 
             case 'SYNC_NOW': payload.action = 'listLive'; payload.sheetName = s.sheetName || 'LIVE REQUESTS'; payload.reminderMinutes = s.reminderMinutes || 5; break;
@@ -171,7 +172,46 @@ window.VercelBackend = {
 
 const ids=["endpointUrl","spreadsheetId","sheetName","historySheetName","staffName","staffList","computerName","defaultTiming","reminderMinutes","syncIntervalSeconds"];
 const defaults={endpointUrl:"",spreadsheetId:"",sheetName:"LIVE REQUESTS",historySheetName:"HISTORY",staffName:"",staffList:"",computerName:"",defaultTiming:20,reminderMinutes:5,syncIntervalSeconds:10};
-VercelStorage.sync.get(defaults,s=>ids.forEach(id=>document.getElementById(id).value=s[id]??""));
+function populateStaffNameOptions(names, selectedName="") {
+    const select=document.getElementById("staffName");
+    if(!select) return;
+    const unique=[...new Set((names||[]).map(x=>String(x||"").trim()).filter(Boolean))];
+    select.replaceChildren();
+    const placeholder=document.createElement("option");
+    placeholder.value=""; placeholder.textContent="Select your name..."; select.append(placeholder);
+    unique.forEach(name=>{const option=document.createElement("option");option.value=name;option.textContent=name;select.append(option);});
+    const match=unique.find(name=>name.toLowerCase()===String(selectedName||"").trim().toLowerCase());
+    if(match) select.value=match;
+}
+VercelStorage.sync.get(defaults,s=>{
+    const savedNames=String(s.staffList||"").split(/[\n,;]+/).map(x=>x.trim()).filter(Boolean);
+    populateStaffNameOptions(savedNames,s.staffName||"");
+    ids.forEach(id=>{const el=document.getElementById(id); if(el) el.value=s[id]??"";});
+});
+const fetchStaffButton=document.getElementById("fetchStaff");
+if(fetchStaffButton) fetchStaffButton.onclick=async()=>{
+    const status=document.getElementById("staffFetchStatus");
+    const setFetchStatus=(text,isError=false)=>{if(status){status.textContent=text;status.style.color=isError?"#b42318":"#0b8f5a";}};
+    fetchStaffButton.disabled=true; fetchStaffButton.textContent="Fetching…"; setFetchStatus("Connecting to Staff Directory…");
+    try {
+        const connectionValues={};
+        ["endpointUrl","spreadsheetId","sheetName","historySheetName","computerName"].forEach(id=>connectionValues[id]=document.getElementById(id).value);
+        await VercelStorage.sync.set(connectionValues);
+        const result=await VercelBackend.sendMessage({type:"FETCH_STAFF_DIRECTORY",directorySheetName:"Staff Directory"});
+        if(!result||result.ok!==true) throw new Error(result?.error||"Could not fetch Staff Directory.");
+        const names=[...new Set((Array.isArray(result.staff)?result.staff:[]).map(x=>String(x||"").trim()).filter(Boolean))];
+        if(!names.length) throw new Error(`No staff names were returned from "${result.sourceSheet||"Staff Directory"}". Check column A in Google Sheets.`);
+        const previous=String(document.getElementById("staffName").value||"").trim();
+        populateStaffNameOptions(names,previous);
+        document.getElementById("staffList").value=names.join(", ");
+        await VercelStorage.sync.set({staffList:names.join(", ")});
+        setFetchStatus(`✓ Fetched ${names.length} staff name(s) from "${result.sourceSheet||"Staff Directory"}". Select your name, then Save Settings.`);
+    } catch(error) {
+        setFetchStatus(`✗ ${error?.message||error}`,true);
+    } finally {
+        fetchStaffButton.disabled=false; fetchStaffButton.textContent="Fetch Staff";
+    }
+};
 document.getElementById("save").onclick=async()=>{const o={};ids.forEach(id=>o[id]=document.getElementById(id).value);o.defaultTiming=Math.min(60,Math.max(5,Number(o.defaultTiming)||20));o.reminderMinutes=Math.max(0,Number(o.reminderMinutes)||0);await VercelStorage.sync.set(o);msg("✓ Settings saved.");};
 document.getElementById("test").onclick=async()=>{msg("Testing…");const r=await VercelBackend.sendMessage({type:"TEST_CONNECTION"});msg(r?.ok?`✓ Connected. ${r.message||""}`:`✗ ${r?.error||"Connection failed."}`,!r?.ok);};
 function msg(t,e=false){const m=document.getElementById("msg");m.textContent=t;m.style.color=e?"#b42318":"#0b8f5a"}
