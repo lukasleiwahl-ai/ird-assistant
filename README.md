@@ -1,18 +1,16 @@
-# IRD Assistant v2.7.9.10 — Startup/UI Recovery Patch
+# IRD Assistant v2.7.9.11 — Notification Modal Runtime Fix
 
-This patch fixes a JavaScript startup Temporal Dead Zone error that prevented event handlers from registering, leaving Settings, New Request, Tasks, Completed, and Done controls unresponsive.
+This is an incremental correction on the official v2.7.9.10 baseline.
 
-It preserves the locked v2.7.9.4 baseline and all additive Staff Directory, WIB time, internal notification, Task Reply/Discussion, and Chrome/Edge features.
+## Root cause
+The Vercel PWA notification modal does not contain the optional `closeNotificationsFooter` element. Both Vercel and extension UI shared the same `assistant.js`, which previously called `.addEventListener()` on that missing element unconditionally. This threw `TypeError: Cannot read properties of null (reading 'addEventListener')` and surfaced as `App runtime error`.
 
-## Packages
-- `browser-extension/` is the Chrome / Microsoft Edge Manifest V3 extension source.
-- The project root is the Vercel PWA source.
-- `google-apps-script/Code.gs` remains the consolidated backend.
+## Correction
+The footer Close listener is now registered only when that optional element exists. The extension still wires its footer Close button; the Vercel UI continues using its existing top-right Close button. No feature, workflow, data schema, Apps Script, WhatsApp integration, Flying Button, Track Guest Request, alarm or visual layout was removed or redesigned.
 
-## Deploy
-1. For Chrome/Edge, load or reload the `browser-extension` folder (the folder containing its Manifest V3 `manifest.json`).
-2. For Vercel, deploy the project root as usual.
-3. Keep the existing Apps Script Web App URL and Spreadsheet ID.
-4. Apps Script does not need redeployment for this frontend initialization fix.
+## Build targets
+- `browser-extension/` — load unpacked in Chrome or Edge.
+- Project root — deploy to the existing Vercel project.
 
-See `VERSION_2.7.9.10_CHANGELOG.md` and `V2.7.9.10_BUILD_AND_VALIDATION_REPORT.md`.
+## Validation boundary
+The Vercel HTML and JavaScript were loaded in a Chromium Playwright harness with mocked Chrome APIs and mocked backend responses. This verified absence of runtime errors and exercised tab navigation, Notifications modal open/close, New Request submit, task rendering, Done modal and confirmation flow. Live production Apps Script / Google Sheets / Vercel credentials were not used.

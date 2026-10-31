@@ -786,7 +786,8 @@ async function sendDiscussionReply(){
 }
 $('notificationBell').addEventListener('click',openNotifications);
 $('closeNotifications').addEventListener('click',closeNotifications);
-$('closeNotificationsFooter').addEventListener('click',closeNotifications);
+const notificationFooterClose = $('closeNotificationsFooter');
+if (notificationFooterClose) notificationFooterClose.addEventListener('click', closeNotifications);
 $('notificationModal').addEventListener('click',async e=>{
   if(e.target===$('notificationModal')){closeNotifications();return;}
   const item=e.target.closest('.notification-item');if(!item)return;
