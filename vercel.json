@@ -1,11 +1,61 @@
 {
+  "version": 2,
+  "functions": {
+    "api/*.js": {
+      "maxDuration": 30
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/$1"
+    }
+  ],
   "headers": [
-    {"source": "/", "headers": [{"key": "Cache-Control", "value": "no-store, no-cache, must-revalidate, max-age=0"}]},
-    {"source": "/index.html", "headers": [{"key": "Cache-Control", "value": "no-store, no-cache, must-revalidate, max-age=0"}]},
-    {"source": "/assistant.js", "headers": [{"key": "Cache-Control", "value": "no-store, no-cache, must-revalidate, max-age=0"}]},
-    {"source": "/vercel-bridge.js", "headers": [{"key": "Cache-Control", "value": "no-store, no-cache, must-revalidate, max-age=0"}]},
-    {"source": "/assistant.css", "headers": [{"key": "Cache-Control", "value": "no-store, no-cache, must-revalidate, max-age=0"}]},
-    {"source": "/service-worker.js", "headers": [{"key": "Cache-Control", "value": "no-store, no-cache, must-revalidate, max-age=0"}]},
-    {"source": "/options.js", "headers": [{"key": "Cache-Control", "value": "no-store, no-cache, must-revalidate, max-age=0"}]}
+    {
+      "source": "/",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store, max-age=0, must-revalidate"
+        }
+      ]
+    },
+    {
+      "source": "/index.html",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store, max-age=0, must-revalidate"
+        }
+      ]
+    },
+    {
+      "source": "/sw.js",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store, max-age=0, must-revalidate"
+        }
+      ]
+    },
+    {
+      "source": "/app.js",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=0, must-revalidate"
+        }
+      ]
+    },
+    {
+      "source": "/styles.css",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=0, must-revalidate"
+        }
+      ]
+    }
   ]
 }

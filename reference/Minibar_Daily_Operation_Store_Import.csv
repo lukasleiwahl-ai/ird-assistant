@@ -1,0 +1,37 @@
+﻿Item,IN Qty,OUT Qty,Store Qty,Room Qty,Data Quality
+MB-A&W Sarsaparilla 250ml,99.0,70.0,107.0,100.0,Numeric source value
+MB-Aqua Reflection Sparkling 380 ml,99.0,70.0,63.0,100.0,Numeric source value
+MB-Aqua Reflection Still 380 ml,0.0,0.0,0.0,0.0,Numeric source value
+MB-Banfi Col Di Sasso Red Wine 375 ml,74.0,65.0,33.0,85.0,Numeric source value
+MB-Banfi Le Rime White Wine 375 ml,92.0,67.0,113.0,98.0,Numeric source value
+MB-Blue Diamond Almond 130 gr,99.0,71.0,126.0,100.0,Numeric source value
+MB-Cadbury Chocolate Milk Bar 25 gr,#REF!,#REF!,#REF!,0.0,IN formula error; OUT formula error; STORE formula error
+MB-Coca Cola 330 ml,94.0,84.0,33.0,97.0,Numeric source value
+MB-Coca cola Zero 330 ml,147.0,114.0,59.0,100.0,Numeric source value
+MB-IRD Fanta Soda Water 250 ml,99.0,69.0,55.0,100.0,Numeric source value
+MB-IRD Red Bull Energy Drink 250 ml,99.0,71.0,127.0,100.0,Numeric source value
+MB-IRD Schweppes Tonic Water 250 ml,99.0,69.0,78.0,100.0,Numeric source value
+MB-IRD Sprite 250 ml,84.0,36.0,69.0,58.0,Numeric source value
+MB-IRD-Bintang Beer 330 ml,99.0,89.0,47.0,100.0,Numeric source value
+MB-IRD-Coca Cola 250 ml,5.0,12.0,36.0,3.0,Numeric source value
+MB-IRD-Coke Zero,#REF!,#REF!,#REF!,0.0,IN formula error; OUT formula error; STORE formula error
+MB-IRD-Heineken Beer 330 ml,99.0,81.0,50.0,100.0,Numeric source value
+MB-Laurent Perrier Sparkling Wine 375 ml,2.0,2.0,4.0,2.0,Numeric source value
+MB-Le Fruit Apple Juice 250 ml,0.0,0.0,32.0,0.0,Numeric source value
+MB-Le Fruit Orange Juice 250 ml,0.0,0.0,0.0,0.0,Numeric source value
+MB-Local Nuts YAVA Roasted Cashew 35 gr,99.0,71.0,137.0,100.0,Numeric source value
+MB-Local Nuts YAVA Sweet and Spicy 35 gr,99.0,71.0,176.0,100.0,Numeric source value
+MB-Marques De Caceres Blanco Joven (375ml) – Vintage 2023,7.0,2.0,42.0,2.0,Numeric source value
+MB-Marques De Caceres Tinto Crianza (375ml) – Vintage 2020,25.0,5.0,100.0,15.0,Numeric source value
+MB-Moet & Chandon 200 ml,23.0,23.0,123.0,23.0,Numeric source value
+MB-Chocolate Monggo 40 gr,99.0,74.0,67.0,100.0,Numeric source value
+MB-Pringles Potato Chips 42 gr,99.0,78.0,88.0,100.0,Numeric source value
+MB-Rauch Apple Juice 200 ml,99.0,71.0,113.0,100.0,Numeric source value
+MB-Rauch Orange Juice 200 ml,99.0,69.0,105.0,100.0,Numeric source value
+MB-Ricola Candy,109.0,89.0,124.0,100.0,Numeric source value
+MB-Soy Joy Energy Bar 30 gr,99.0,71.0,98.0,100.0,Numeric source value
+MB-IRD Sprite 330 ml,14.0,45.0,21.0,42.0,Numeric source value
+MB-Taittinger Sparkling Wine 375 ml,55.0,65.0,37.0,75.0,Numeric source value
+MB- Tong Garden Almond 140 gr,,,18.0,0.0,IN blank; OUT blank
+MB-Wafer Loacker's Quadratini,99.0,75.0,98.0,100.0,Numeric source value
+MB-Wonderful Pistachio120 gr,99.0,71.0,154.0,100.0,Numeric source value

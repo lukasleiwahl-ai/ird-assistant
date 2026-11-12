@@ -1,0 +1,16 @@
+{
+  "project": "Minibar Daily Operation",
+  "version": "1.3.5",
+  "spreadsheetId": "1NgazyK-0SK6kmUkLj_8Y7CUxqvwWPC1OWGoyGia9mbM",
+  "timezone": "Asia/Jakarta",
+  "deployment": {
+    "vercelProject": "minibar-daily-operation",
+    "gitBranch": "main",
+    "rootDirectory": "./"
+  },
+  "environmentVariables": {
+    "MDO_SPREADSHEET_ID": "1NgazyK-0SK6kmUkLj_8Y7CUxqvwWPC1OWGoyGia9mbM",
+    "MDO_SCRIPT_URL": "https://script.google.com/macros/s/REPLACE_WITH_DEPLOYMENT_ID/exec",
+    "MDO_ADMIN_PIN": "SET_A_UNIQUE_ADMIN_PIN"
+  }
+}

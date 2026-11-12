@@ -1,0 +1,3 @@
+const {send,config,callScript}=require('../lib/connection');
+const ADMIN_ACTIONS=new Set(['catalogAdd','catalogArchive','outletAdd','outletArchive','storeAdjustment','reconcileStock']);
+module.exports=async(req,res)=>{if(req.method!=='POST')return send(res,405,{ok:false,error:'Method not allowed'});try{const p=req.body||{},c=config();if(ADMIN_ACTIONS.has(String(p.action||''))){if(!c.adminPin||String(p.adminPin||'')!==c.adminPin)return send(res,403,{ok:false,error:'Administrator PIN is required for this action.'});}const payload={...p};delete payload.adminPin;const data=await callScript(payload);return send(res,200,data);}catch(e){return send(res,502,{ok:false,error:e.message||'Request failed',retryable:true});}};

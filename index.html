@@ -1,207 +1,26 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#0b8f5a">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="default">
-<link rel="manifest" href="manifest.json">
-<link rel="apple-touch-icon" href="icon192.png">
-<title>IRD Assistant</title>
-<link rel="stylesheet" href="./assistant.css?v=2.7.9.13-live-toast">
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#10263d"><meta name="description" content="Minibar Daily Operation — room inventory, store, sold, loss and internal outlet transfers.">
+<link rel="manifest" href="/manifest.webmanifest"><link rel="icon" href="/icon.svg"><link rel="stylesheet" href="/styles.css?v=1.3.5">
+<title>Minibar Daily Operation</title>
 </head>
 <body>
-  <header class="topbar">
-    <div class="brand">
-      <div class="brand-icon"><img src="ird_cloche.png" alt="IRD Assistant"></div>
-      <div>
-        <div class="brand-title">IRD Assistant <span class="pill">Live</span></div>
-        <div class="brand-sub">WhatsApp → Google Sheets</div>
-      </div>
-    </div>
-    <div class="topbar-actions">
-      <button id="notificationBell" class="notification-bell" type="button" aria-label="Open notifications" title="Notifications">
-        <span aria-hidden="true">🔔</span><span id="notificationBadge" class="notification-badge hidden">0</span>
-      </button>
-      <button id="closeWindow" class="icon-btn" title="Close">×</button>
-    </div>
-  </header>
-
-  <nav class="tabs">
-    <button class="tab active" data-tab="new">New Request</button>
-    <button class="tab" data-tab="tasks">Tasks <span id="taskCount" class="count">0</span></button>
-    <button class="tab" data-tab="completed">Completed <span id="completedCount" class="count">0</span></button>
-    <button class="tab" data-tab="settings">Settings</button>
-  </nav>
-
-  <div id="alertBanner" class="alert hidden"></div>
-  <div id="liveToast" class="live-toast hidden" role="status" aria-live="polite"><div class="live-toast-icon" id="liveToastIcon">✓</div><div class="live-toast-copy"><b id="liveToastTitle">IRD Assistant</b><span id="liveToastMessage"></span><small id="liveToastMeta"></small></div><button type="button" id="liveToastClose" aria-label="Dismiss notification">×</button></div>
-  <main>
-    <section id="tab-new" class="tab-panel active">
-      <div id="importBanner" class="banner hidden"><span class="check">✓</span><div><b>Message imported</b><small>Room number, guest name and request are read from the WhatsApp message you selected. Please check before saving.</small></div></div>
-      <form id="requestForm">
-        <div class="grid-2">
-          <label>Room Number <span>*</span><input id="room" required type="text" inputmode="text" autocomplete="off" placeholder="Room number / room name"></label>
-          <label>Guest Name <small>(optional)</small><input id="guestName"></label>
-        </div>
-        <label>Request / Note <span>*</span><textarea id="request" required placeholder="Extra towel, amenity, room assistance..."></textarea></label>
-        <section class="image-upload" id="imageUploadArea">
-          <div class="image-upload-head"><div><b>Add Image</b><small>Take a photo with your camera or choose from gallery</small></div><div class="image-action-buttons"><button type="button" class="secondary small-btn camera-btn" id="chooseImages">📷 Add Image (Camera)</button><button type="button" class="secondary small-btn" id="chooseGalleryImages">🖼 Gallery</button></div></div>
-          <input id="imageInput" class="file-input-hidden" type="file" accept="image/*" multiple>
-          <input id="cameraInput" class="file-input-hidden" type="file" accept="image/*" capture="environment">
-          <div id="imageDropzone" class="image-dropzone" tabindex="0"><div class="image-drop-icon">▧</div><b>Paste image here (Ctrl + V)</b><span>or drag & drop / use Camera or Gallery above</span><small>JPG, PNG, WebP • up to 5 images</small></div>
-          <div id="imagePreviewGrid" class="image-preview-grid"></div>
-          <div id="imageUploadNote" class="image-upload-note"></div>
-        </section>
-        <div class="grid-2">
-          <label>Priority <span>*</span>
-            <select id="priority"><option value="Normal">🟢 Normal</option><option value="High">🟠 High</option><option value="Urgent">🔴 Urgent</option></select>
-          </label>
-          <label>SLA / Timing (min) <span>*</span>
-            <select id="timing"><option value="5">5</option><option value="10">10</option><option value="15">15</option><option value="20">20</option><option value="25">25</option><option value="30">30</option><option value="40">40</option><option value="45">45</option><option value="60">60</option></select>
-          </label>
-        </div>
-        <div class="grid-2">
-          <label>Due Date <span>*</span><input id="dueDate" type="date" required></label>
-          <label>Due Time <span>*</span><input id="dueTime" type="time" required></label>
-        </div>
-        <div class="grid-2">
-          <label>PIC <span>*</span><select id="pic" required></select></label>
-          <label>Created By <input id="createdBy" readonly></label>
-        </div>
-        <fieldset class="notification-group">
-          <legend>Notification <span>*</span> <span class="info-dot" title="Choose whether this request should play the Due Now alarm.">i</span></legend>
-          <div class="notification-options">
-            <label class="notification-option selected" data-value="banner">
-              <input type="radio" name="notification" value="banner" checked>
-              <span class="radio-ui"></span>
-              <span class="notification-icon">🔔</span>
-              <span class="notification-copy"><b>Pop-up banner</b><small>In-app and device notification banner.</small></span>
-            </label>
-            <label class="notification-option" data-value="banner-alarm">
-              <input type="radio" name="notification" value="banner-alarm">
-              <span class="radio-ui"></span>
-              <span class="notification-icon">🔔</span>
-              <span class="notification-copy"><b>Pop-up banner + Alarm</b><small>In-app/device banner and play alarm when due.</small></span>
-            </label>
-          </div>
-        </fieldset>
-        <label class="checkline"><input id="track" type="checkbox" checked> Save this request to Google Sheets for tracking</label>
-        <div id="formError" class="error"></div>
-        <div class="actions"><button type="button" class="secondary" id="cancel">Cancel</button><button type="submit" class="primary" id="save">▣ Save to Google Sheets</button></div>
-      </form>
-      <div id="savedState" class="saved hidden"></div>
-    </section>
-
-    <section id="tab-tasks" class="tab-panel">
-      <div class="section-head"><div><h2>Live Guest Requests</h2><small>Shared Google Sheet • central history & tracking</small></div><button id="refreshTasks" class="secondary small-btn">↻ Refresh</button></div>
-      <div id="tasks" class="tasks">Loading…</div>
-    </section>
-
-    <section id="tab-completed" class="tab-panel">
-      <div class="section-head"><div><h2>Completed</h2><small>Today's completed tasks • Auto clear after day change</small></div><button id="refreshCompleted" class="secondary small-btn">↻ Refresh</button></div>
-      <div id="completed" class="completed-list">Loading…</div>
-    </section>
-
-    <section id="tab-settings" class="tab-panel">
-      <div class="banner info"><div><b>Connection</b><small>Google Sheets connection is managed in Extension Options.</small></div></div>
-      <button id="openOptions" class="primary wide">Open Google Sheets Settings</button>
-      <button id="openSheet" class="secondary wide">Open Live Sheet</button>
-    </section>
-  </main>
-
-  <div id="remarkModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="remarkTitle">
-    <div class="remark-modal">
-      <div class="remark-modal-head"><div><h3 id="remarkTitle">Mark Task as Done</h3><small id="remarkTaskLabel">Complete this task</small></div><button type="button" class="icon-btn" id="closeRemark">×</button></div>
-      <div class="completion-options">
-        <label class="completion-option selected" data-value="full"><input type="radio" name="completionMode" value="full" checked><span class="radio-ui"></span><span><b>Completed Fully</b><small>Task finished with no pending issue.</small></span></label>
-        <label class="completion-option" data-value="pending"><input type="radio" name="completionMode" value="pending"><span class="radio-ui"></span><span><b>Completed with Pending</b><small>Task is partially completed and something is still pending.</small></span></label>
-      </div>
-      <label id="remarkFieldLabel">Remark <span id="remarkRequired">*</span><textarea id="remarkInput" placeholder="Example: Towel delivered. Amenities not available, will send later."></textarea></label>
-      <section class="remark-evidence" id="remarkEvidenceArea">
-        <div class="remark-evidence-head"><div><b>Evidence Image</b><small>Take a photo with your camera or choose from gallery</small></div><div class="image-action-buttons"><button type="button" class="secondary small-btn camera-btn" id="chooseRemarkImages">📷 Add Image (Camera)</button><button type="button" class="secondary small-btn" id="chooseRemarkGalleryImages">🖼 Gallery</button></div></div>
-        <input id="remarkImageInput" class="file-input-hidden" type="file" accept="image/*" multiple>
-        <input id="remarkCameraInput" class="file-input-hidden" type="file" accept="image/*" capture="environment">
-        <div id="remarkImageDropzone" class="image-dropzone remark-dropzone" tabindex="0"><div class="image-drop-icon">▧</div><b>Paste evidence image here (Ctrl + V)</b><span>or drag & drop / use Camera or Gallery above</span><small>JPG, PNG, WebP • up to 5 images</small></div>
-        <div id="remarkImagePreviewGrid" class="image-preview-grid"></div>
-        <div id="remarkImageUploadNote" class="image-upload-note"></div>
-      </section>
-      <div id="remarkError" class="error"></div>
-      <div class="actions"><button type="button" class="secondary" id="cancelRemark">Cancel</button><button type="button" class="primary" id="confirmDone">✓ Save & Mark as Done</button></div>
-    </div>
-  </div>
-
-  <div id="notificationModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="notificationTitle">
-    <section class="notification-modal">
-      <header class="feature-modal-head"><div><h3 id="notificationTitle">Notifications</h3><small>Task Completed • Shared with all IRD Assistant users</small></div><button id="closeNotifications" type="button" class="icon-btn" aria-label="Close">×</button></header>
-      <div id="notificationList" class="notification-list"><div class="notification-empty">Loading notifications…</div></div>
-    </section>
-  </div>
-
-  <div id="discussionModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="discussionTitle">
-    <section class="discussion-modal">
-      <header class="feature-modal-head"><div><h3 id="discussionTitle">Task Discussion</h3><small id="discussionSubtitle"></small></div><button id="discussionClose" type="button" class="icon-btn" aria-label="Close">×</button></header>
-      <div id="discussionMessages" class="discussion-messages"><div class="discussion-empty">Loading discussion…</div></div>
-      <label class="discussion-compose-label">Write a reply<textarea id="discussionInput" rows="3" maxlength="3000" placeholder="Type your message…"></textarea></label>
-      <div id="discussionError" class="error"></div>
-      <div class="actions"><button id="discussionCancel" type="button" class="secondary">Close</button><button id="sendDiscussionReply" type="button" class="primary">Send Reply</button></div>
-    </section>
-  </div>
-
-  <footer><span id="connectionDot" class="dot"></span><span id="connectionText">Checking connection…</span><span class="spacer"></span><span id="computerText"></span></footer>
-  <script>
-    (function () {
-      let coreLoaded = false;
-      window.addEventListener('error', function (event) {
-        if (event.target && event.target.tagName === 'SCRIPT') {
-          const label = document.getElementById('connectionText');
-          if (label) label.textContent = 'App script failed to load — check assistant.js deployment';
-          const dot = document.getElementById('connectionDot');
-          if (dot) dot.className = 'dot bad';
-          enableFallbackNavigation();
-          return;
-        }
-        if (event.message) {
-          const label = document.getElementById('connectionText');
-          if (label && label.textContent === 'Checking connection…') label.textContent = 'App runtime error — reload and inspect deployment';
-          const dot = document.getElementById('connectionDot');
-          if (dot) dot.className = 'dot bad';
-          console.error('IRD Assistant runtime error:', event.message, event.filename, event.lineno);
-          enableFallbackNavigation();
-        }
-      }, true);
-      window.addEventListener('unhandledrejection', function (event) {
-        console.error('IRD Assistant unhandled startup rejection:', event.reason);
-        const label = document.getElementById('connectionText');
-        if (label && label.textContent === 'Checking connection…') label.textContent = 'App startup error — reload and inspect deployment';
-      });
-      function enableFallbackNavigation() {
-        if (window.__IRD_FALLBACK_NAV_ENABLED__) return;
-        window.__IRD_FALLBACK_NAV_ENABLED__ = true;
-        document.querySelectorAll('.tab').forEach(function (button) {
-          button.addEventListener('click', function () {
-            const name = button.dataset.tab;
-            document.querySelectorAll('.tab').forEach(function (item) { item.classList.toggle('active', item === button); });
-            document.querySelectorAll('.tab-panel').forEach(function (panel) { panel.classList.toggle('active', panel.id === 'tab-' + name); });
-          });
-        });
-        const options = document.getElementById('openOptions');
-        if (options) options.addEventListener('click', function () { window.location.href = './options.html'; });
-      }
-      window.setTimeout(function () {
-        const label = document.getElementById('connectionText');
-        if (!coreLoaded && label && label.textContent === 'Checking connection…') {
-          label.textContent = 'App not initialized — assistant.js did not finish loading';
-          const dot = document.getElementById('connectionDot');
-          if (dot) dot.className = 'dot bad';
-          enableFallbackNavigation();
-        }
-      }, 8000);
-      window.__IRD_MARK_CORE_LOADED__ = function () { coreLoaded = true; };
-    })();
-  </script>
-  <script src="./vercel-bridge.js?v=2.7.9.13"></script>
-  <script src="./assistant.js?v=2.7.9.13-live-toast" onload="window.__IRD_MARK_CORE_LOADED__ && window.__IRD_MARK_CORE_LOADED__()"></script>
-</body>
-</html>
+<div id="login" class="login-screen"><div class="login-panel"><img src="/assets/intercontinental-logo.png" alt="InterContinental Jakarta Pondok Indah" class="login-logo"><div class="brand-rule"></div><h1>MINIBAR</h1><p class="brand-sub">DAILY OPERATION</p><h2>Staff Sign In</h2><p class="muted">Enter your name to record minibar activities.</p><input id="staffName" class="field login-field" placeholder="Your name" autocomplete="name"><button id="signIn" class="btn gold wide">Continue</button><div id="loginStatus" class="muted small"></div></div></div>
+<div id="app" class="app hidden">
+<header class="topbar"><div class="brand-lockup"><img src="/assets/intercontinental-logo.png" alt="InterContinental"><div><b>MINIBAR DAILY OPERATION</b><small>INVENTORY & STOCK CONTROL</small></div></div><div class="top-actions"><span id="connection" class="connection">Checking connection…</span><span id="userLabel" class="user-label"></span><button id="refresh" class="icon-btn" title="Refresh">↻</button><button id="signOut" class="btn outline">Sign Out</button></div></header>
+<aside class="sidebar"><nav><button data-view="dashboard" class="nav active">▦ <span>Dashboard</span></button><button data-view="rooms" class="nav">▤ <span>Room Inventory</span></button><button data-view="store" class="nav">▣ <span>Minibar Store</span></button><button data-view="sold" class="nav">＋ <span>Sold Capture</span></button><button data-view="loss" class="nav">⚑ <span>Loss / Dispute</span></button><button data-view="transfers" class="nav">⇄ <span>Internal Transfer</span></button><button data-view="history" class="nav">◷ <span>Activity History</span></button><button data-view="catalog" class="nav">☷ <span>Item Catalog</span></button></nav><div class="side-foot">Independent workspace<br>Google Sheets + Apps Script</div></aside>
+<main class="main"><div class="page-head"><div><div class="eyebrow">OPERATIONS CONTROL</div><h1 id="pageTitle">Dashboard</h1><p id="pageSub">Live overview of rooms, stock and transactions.</p></div><button id="addPrimary" class="btn gold hidden">＋ Add New</button></div>
+<section id="dashboardView" class="view"><div class="kpi-grid"><article class="kpi"><small>TOTAL ROOMS</small><strong id="kRooms">—</strong><span>Source: ROOM STATUS</span></article><article class="kpi"><small>ROOM ITEM UNITS</small><strong id="kRoomUnits">—</strong><span>Current recorded quantity</span></article><article class="kpi"><small>MINIBAR STORE</small><strong id="kStore">—</strong><span>Available store units</span></article><article class="kpi"><small>SOLD CAPTURED</small><strong id="kSold">—</strong><span>Legacy + PWA transactions</span></article><article class="kpi"><small>LOSS / DISPUTE</small><strong id="kLoss">—</strong><span>Recorded quantities</span></article><article class="kpi"><small>ACTIVE SKU</small><strong id="kSku">—</strong><span>Discontinued items excluded</span></article></div><div class="dashboard-grid"><section class="panel"><div class="panel-head"><h3>Room Status Overview</h3><button class="text-btn" data-goto="rooms">View rooms →</button></div><div class="status-summary"><div><span class="dot green"></span><b id="fullRooms">0</b><small>Full Setup</small></div><div><span class="dot amber"></span><b id="incompleteRooms">0</b><small>Incomplete</small></div><div><span class="dot red"></span><b id="emptyRooms">0</b><small>Empty</small></div></div><div class="bar-track"><i id="roomProgress"></i></div><div id="roomFloorSummary" class="floor-summary"></div></section><section class="panel"><div class="panel-head"><h3>Stock Alerts</h3><span class="pill">Live data</span></div><div id="stockAlerts" class="alert-list"></div></section></div><section class="panel"><div class="panel-head"><h3>Recent Activity</h3><button class="text-btn" data-goto="history">Open history →</button></div><div id="recentActivity" class="table-wrap"></div></section></section>
+<section id="roomsView" class="view hidden"><div class="toolbar"><input id="roomSearch" class="field" placeholder="Search room number…"><select id="roomFloor" class="field"><option value="">All Floors</option></select><select id="roomStatus" class="field"><option value="">All Status</option><option>Full Setup</option><option>Incomplete</option><option>Empty</option><option value="Locked">🔒 Locked</option></select></div><div id="roomCards" class="room-grid"></div></section>
+<section id="storeView" class="view hidden"><div class="toolbar"><input id="storeSearch" class="field" placeholder="Search item or SKU…"><span class="pill">Minibar Store balance</span><button class="btn outline" id="stockAdjust">Stock Adjustment</button></div><div id="storeTable" class="table-wrap"></div></section>
+<section id="soldView" class="view hidden"><div class="panel form-panel"><h3>Record Guest Consumption / Sold Item</h3><p class="muted">Post a consumed item from a room. The room quantity decreases and the sold ledger is updated. Optional camera evidence.</p><div class="form-grid"><label>Floor<select id="soldFloor" class="field"></select></label><label>Room<select id="soldRoom" class="field"></select></label><label class="span-2">Item<select id="soldSku" class="field"></select></label><p id="soldRoomLockNotice" class="span-2 lock-notice"></p><label>Quantity<input id="soldQty" class="field" type="number" min="1" value="1"></label><label>Selling Price (IDR)<input id="soldPrice" class="field" type="number" min="0" value="0"></label><label class="span-2">Notes<textarea id="soldNotes" class="field" rows="2" placeholder="Optional notes"></textarea></label><label class="span-2">Evidence photo (optional)<input id="soldPhoto" class="field file-field" type="file" accept="image/*" capture="environment"></label></div><button id="postSold" class="btn gold">Post Sold Item</button></div><div class="panel"><div class="panel-head"><h3>Recent Sold Records</h3></div><div id="soldTable" class="table-wrap"></div></div></section>
+<section id="lossView" class="view hidden"><div class="panel form-panel"><h3>Post Loss / Dispute</h3><p class="muted">For damaged, chipped, leaking or missing items. Evidence photo is recommended and captured from the phone camera.</p><div class="form-grid"><label>Room<select id="lossRoom" class="field"></select></label><label>Item<select id="lossSku" class="field"></select></label><p id="lossRoomLockNotice" class="span-2 lock-notice"></p><label>Quantity<input id="lossQty" class="field" type="number" min="1" value="1"></label><label>Posting Type<select id="lossType" class="field"><option value="LOSS">Lost Item</option><option value="DISPUTE">Dispute / Refuse</option></select></label><label class="span-2">Reason / Notes<textarea id="lossNotes" class="field" rows="2" placeholder="Describe damaged or missing item"></textarea></label><label class="span-2">Camera Evidence<input id="lossPhoto" class="field file-field" type="file" accept="image/*" capture="environment"></label></div><button id="postLoss" class="btn danger">Post Loss / Dispute</button></div><div class="panel"><div class="panel-head"><h3>Recent Loss / Dispute Records</h3></div><div id="lossTable" class="table-wrap"></div></div></section>
+<section id="transfersView" class="view hidden"><div class="transfer-layout"><section class="panel form-panel"><h3>Internal Transfer</h3><p class="muted">Transfer stock between Minibar Store and another outlet. Every posted transfer is timestamped and audited.</p><div class="form-grid"><label>From Outlet<select id="transferFrom" class="field"></select></label><label>To Outlet<select id="transferTo" class="field"></select></label><label class="span-2">Item<select id="transferSku" class="field"></select></label><label>Quantity<input id="transferQty" class="field" type="number" min="1" value="1"></label><label class="span-2">Box Notes<textarea id="transferNotes" class="field" rows="3" placeholder="Write transfer notes / reason"></textarea></label></div><div class="audit-line"><span>Created By <b id="transferBy">—</b></span><span>Timestamp <b id="transferTime">Generated on post</b></span></div><button id="postTransfer" class="btn gold">Post Internal Transfer</button></section><section class="panel"><div class="panel-head"><h3>Outlet Master</h3><button id="addOutlet" class="btn outline">＋ Add Outlet</button></div><div id="outletList" class="outlet-list"></div></section></div><section class="panel"><div class="panel-head"><h3>Outlet Inventory</h3><select id="outletStockSelect" class="field"></select></div><div id="outletStockTable" class="table-wrap"></div></section><section class="panel"><div class="panel-head"><h3>Transfer History</h3></div><div id="transferTable" class="table-wrap"></div></section></section>
+<section id="historyView" class="view hidden"><div class="toolbar"><select id="historyRoom" class="field"><option value="">All Rooms</option></select><input id="historyDate" class="field" type="date"><select id="historyAction" class="field"><option value="">All Activities</option><option>REFILL</option><option>TAKE_OUT</option><option>SOLD</option><option>LOSS</option><option>DISPUTE</option><option>INTERNAL_TRANSFER</option><option>MANUAL_ADJUSTMENT</option></select><button id="filterHistory" class="btn gold">Apply Filter</button></div><div id="historyTable" class="table-wrap"></div></section>
+<section id="catalogView" class="view hidden"><div class="toolbar"><input id="catalogSearch" class="field" placeholder="Search SKU / item / category…"><span class="pill">Active items only · archived history retained</span></div><div id="catalogTable" class="table-wrap"></div></section>
+</main></div>
+<div id="modal" class="modal hidden"><div class="modal-card"><div class="modal-head"><h3 id="modalTitle">Add</h3><button id="modalClose" class="icon-btn">×</button></div><div id="modalBody"></div></div></div><div id="toast" class="toast"></div>
+<script src="/app.js?v=1.3.5"></script><script>if('serviceWorker'in navigator)window.addEventListener('load',async()=>{try{const registration=await navigator.serviceWorker.register('/sw.js?v=1.3.5',{updateViaCache:'none'});await registration.update();}catch(error){console.warn('PWA update check failed',error);}});</script>
+</body></html>
